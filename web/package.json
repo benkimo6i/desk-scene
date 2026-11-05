@@ -1,0 +1,8 @@
+{
+  "name": "desk-scene",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --port 5180", "build": "vite build" },
+  "dependencies": { "three": "^0.186.1" },
+  "devDependencies": { "vite": "^8.3.5" }
+}

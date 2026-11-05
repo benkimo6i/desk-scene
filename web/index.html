@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Desk scene review</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #1E4DB5; overflow: hidden; }
+      canvas { display: block; width: 100vw; height: 100vh; }
+      #review { position: fixed; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+        max-width: calc(100vw - 48px); padding: 8px 10px; border-radius: 8px; background: #fffd; color: #123;
+        font: 12px/1.2 system-ui, sans-serif; }
+      #review span { font-weight: 600; margin-left: 6px; }
+      #review button { padding: 4px 8px; border: 1px solid #1236; border-radius: 5px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
+      #review button[aria-pressed='true'] { background: #123; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
