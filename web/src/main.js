@@ -4,81 +4,16 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-import { CITIES, cityForTimezone } from './skylines/index.js';
+import skylineData from './skylines/san-francisco.js';
+import { createHover } from './hover.js';
+import { createFlight, createPhoneLift, createPicker, measureScreen } from './flight.js';
+import { createPhoneCard, createScreenCard } from './screenCard.js';
+import { createHoverPieces } from './hoverPieces.js';
+import { PAGES } from './pages.js';
+import { LAMP, PALETTES, initialPalette, setPageColors } from './palettes.js';
+import { createDeskToys } from './deskToys.js';
+import { createPenDrawing } from './penDrawing.js';
 
-// Each material has lit / shadow / deep colours. 'harbor', the default, matches PALETTE in blender/build_desk.py.
-const PALETTES = {
-  blue: {
-    label: 'Cobalt and cream',
-    sky: '#DCE6EF', screen: '#DCE6F2', ink: '#0D1433',
-    skyline: ['#B9CBE2', '#8BA3CF', '#4B5A99'],
-    materials: {
-      M_Main: ['#CFC7B8', '#1E4DB5', '#17399A'],
-      M_Paper: ['#BFD2E6', '#8FA8C8', '#7690B2'],
-      M_Blueprint: ['#B4C2D4', '#7F96B8', '#6F88AC'],
-      M_Sheet: ['#CBCFD4', '#9BAAC2', '#8798B4'],
-      M_Dark: ['#1E4DB5', '#17399A', '#122E80'],
-      M_Green: ['#9DBB9A', '#4F7F62', '#3E6B54'],
-      M_Accent: ['#D9553B', '#A8402F', '#8E3528'],
-    },
-  },
-  indigo: {
-    label: 'Indigo and cream',
-    sky: '#E4E3EF', screen: '#E6E6F3', ink: '#0F0F38',
-    skyline: ['#C4C4E0', '#9593C8', '#4F4C9C'],
-    materials: {
-      M_Main: ['#EFE6D2', '#2B2A7E', '#1F1E63'],
-      M_Paper: ['#DCD9E6', '#8B88BE', '#7370AB'],
-      M_Blueprint: ['#CFCDDF', '#7A77B4', '#66639F'],
-      M_Sheet: ['#E6E3EA', '#A09DC8', '#8784B5'],
-      M_Dark: ['#2B2A7E', '#1F1E63', '#16154C'],
-      M_Green: ['#A8BE98', '#4C7A6A', '#3C6658'],
-      M_Accent: ['#D9553B', '#A8402F', '#8E3528'],
-    },
-  },
-  harbor: {
-    label: 'Blue #0B4C92',
-    sky: '#DCE8F1', screen: '#E0EAF3', ink: '#06203F',
-    skyline: ['#B5CCE2', '#7FA3CB', '#2F5F9A'],
-    materials: {
-      M_Main: ['#EFE6D2', '#0B4C92', '#083A72'],
-      M_Paper: ['#C5D6E6', '#7FA0C4', '#6688AE'],
-      M_Blueprint: ['#B9C8D8', '#6F90B6', '#5C7DA3'],
-      M_Sheet: ['#DCE2E6', '#94ACC8', '#7C96B4'],
-      M_Dark: ['#0B4C92', '#083A72', '#062C58'],
-      M_Green: ['#9DBB9A', '#4F7F62', '#3E6B54'],
-      M_Accent: ['#D9553B', '#A8402F', '#8E3528'],
-    },
-  },
-  dusk: {
-    label: 'Dusk',
-    sky: '#F9DCCB', screen: '#FCEDE5', ink: '#1B1B4B',
-    skyline: ['#EDBFBB', '#B592BB', '#5F5A9E'],
-    materials: {
-      M_Main: ['#F0CFC4', '#3A3F8F', '#2C2F70'],
-      M_Paper: ['#F4DCD3', '#8F86B8', '#736EA3'],
-      M_Blueprint: ['#E8CEC8', '#7C78AE', '#676398'],
-      M_Sheet: ['#F6E4DC', '#A39CC4', '#8A84B2'],
-      M_Dark: ['#3A3F8F', '#2C2F70', '#20235A'],
-      M_Green: ['#B8C9A0', '#5B7F78', '#4A6A68'],
-      M_Accent: ['#E8604C', '#B04660', '#8F3858'],
-    },
-  },
-  ink: {
-    label: 'Ink',
-    sky: '#E4E2DD', screen: '#EFEDE8', ink: '#101114',
-    skyline: ['#CBC9C3', '#9B9C9E', '#55585F'],
-    materials: {
-      M_Main: ['#D6D3CC', '#2A2D34', '#1C1E23'],
-      M_Paper: ['#DAD8D2', '#8B8E94', '#6F7279'],
-      M_Blueprint: ['#CFCDC7', '#7C7F86', '#65686F'],
-      M_Sheet: ['#E2E0DA', '#A0A2A7', '#84868C'],
-      M_Dark: ['#2A2D34', '#1C1E23', '#121317'],
-      M_Green: ['#A9B5A0', '#56665A', '#445248'],
-      M_Accent: ['#D9553B', '#A8402F', '#8E3528'],
-    },
-  },
-};
 const params = new URLSearchParams(location.search);
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -97,13 +32,29 @@ key.position.set(-1, 0.55, 0.8).normalize().multiplyScalar(6).add(new THREE.Vect
 key.target.position.set(0, 0.7, 0);
 key.castShadow = true;
 key.shadow.mapSize.set(4096, 4096);
-Object.assign(key.shadow.camera, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4, near: 0.5, far: 13 });
+Object.assign(key.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.5, far: 20 });
+key.shadow.camera.updateProjectionMatrix();
 key.shadow.bias = -0.0002;
 key.shadow.normalBias = 0.004;
 key.shadow.radius = 1.2;
 const fill = new THREE.DirectionalLight('#fff', 0.62);
 fill.position.set(0.2, 1, 0.3);
 scene.add(key, key.target, fill);
+
+// A hidden ceiling and a longer window wall. They only block sunlight, so the sun can reach
+// the room through the window alone. They never draw on camera or in the outline pass.
+const shellMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+const shell = new THREE.Group();
+for (const [w, h, d, x, y, z] of [
+  [5.4, 0.2, 18, 0.5, 3.1, 7.8], // ceiling
+  [0.2, 3.2, 13, -2.1, 1.5, 9.5], // window wall, past the end of the visible one
+]) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), shellMaterial);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  shell.add(mesh);
+}
+scene.add(shell);
 
 function toonMaterial(tones) {
   // Both sides cast shadows. With the default, walls cast from their room-facing side,
@@ -113,30 +64,48 @@ function toonMaterial(tones) {
     Object.assign(s.uniforms, tones);
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform vec3 uLit, uShadow, uDeep;
+        uniform vec3 uLit, uShadow, uDeep, uRimColor;
+        uniform float uRim;
         float grainAt(vec2 p) {
           vec2 c = floor(p);
           return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453);
         }`)
       .replace('#include <opaque_fragment>', `
+        float rim = (1.0 - abs(dot(normalize(vViewPosition), normal))) * step(0.0, normal.y);
         float n = grainAt(gl_FragCoord.xy / 1.5);
         float base = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));
         // Roughen only the sunlit edge; noise on the blue-to-blue step reads as blotches.
         float v = base + (n - 0.5) * 0.10;
         vec3 tone = base < 0.10 ? uDeep : (v < 0.30 ? uShadow : uLit);
+        if (uRim > 0.5 && rim + (n - 0.5) * 0.04 > 0.66) tone = mix(tone, uRimColor, 0.55);
         outgoingLight = tone * (0.92 + 0.16 * n);
         #include <opaque_fragment>`);
   };
   return m;
 }
+const rimColor = { value: new THREE.Color() };
+const rimOn = { value: 0 }; // a soft warm lamp edge on the chair when the lamp is on
 const newTones = () => ({
   uLit: { value: new THREE.Color() },
   uShadow: { value: new THREE.Color() },
   uDeep: { value: new THREE.Color() },
+  uRim: { value: 0 },
+  uRimColor: rimColor,
 });
-const TONES = Object.fromEntries(Object.keys(PALETTES.blue.materials).map((k) => [k, newTones()]));
+const TONES = Object.fromEntries([...Object.keys(PALETTES.afternoon.materials), 'M_Panel', 'M_Stage'].map((k) => [k, newTones()]));
+const pieceColors = {}; // shared with the hover pieces' canvases
 const MATERIALS = Object.fromEntries(Object.entries(TONES).map(([k, v]) => [k, toonMaterial(v)]));
+const chairMaterial = (name) => toonMaterial({ ...TONES[name], uRim: rimOn });
+const CHAIR = { M_Main: chairMaterial('M_Main'), M_Dark: chairMaterial('M_Dark') };
 const SCREEN = new THREE.MeshBasicMaterial();
+const BULB = new THREE.MeshBasicMaterial();
+const lampLight = new THREE.SpotLight('#fff', 0, 0, THREE.MathUtils.degToRad(40), 0, 0); // no falloff, so the pool ends on one clean edge
+lampLight.shadow.mapSize.set(2048, 2048);
+lampLight.castShadow = true; // left on, so toggling the lamp never recompiles the shaders
+lampLight.shadow.camera.near = 0.02;
+lampLight.shadow.camera.far = 6;
+lampLight.shadow.bias = -0.0004;
+lampLight.shadow.normalBias = 0.004;
 const SKYLINE = [new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial()];
 
 // Ink lines come from a normals + depth buffer, so nothing is added to the models.
@@ -224,22 +193,98 @@ addEventListener('pointermove', (e) => {
   mouse.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
 });
 
-function render() {
-  eased.lerp(mouse, 0.06);
+const SUN_DISTANCE = 10;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const LAMP_TARGET = { lamp: true };
+const CLOSE_NEAR = 0.01; // the phone needs the camera right up against it
+let baseNear = 0.1;
+let hover = null;
+let toys = null;
+let pen = null;
+let phoneLift = null;
+let flight = null;
+let pick = null;
+let hovered = null;
+let pointer = null;
+let lastFrame = performance.now();
+const cards = new Map(); // page -> { card, pieces, hover }
+const clock = { time: 0 };
+
+function requestFrames() {
+  lastFrame = performance.now();
+  renderer.setAnimationLoop(render);
+}
+
+function updatePointerTarget() {
+  if (flight.atDesk && pointer && !pen?.dragging) {
+    const target = pick(camera, pointer.x, pointer.y);
+    if (target !== hovered) {
+      hovered = target;
+      renderer.domElement.style.cursor = hovered ? 'pointer' : '';
+    }
+  } else if (hovered) {
+    hovered = null;
+    renderer.domElement.style.cursor = '';
+  }
+  pointer = flight.atDesk ? pointer : null;
+}
+
+function updateScreens(elapsed) {
+  const dt = Math.min(elapsed, 0.05);
+  clock.time += dt;
+  const { fade, screen } = flight.state;
+  for (const [page, entry] of cards) {
+    const active = page === hovered;
+    entry.hover = THREE.MathUtils.clamp(entry.hover + (active ? dt / 0.16 : -dt / 0.2), 0, 1);
+    entry.card.draw(entry.hover, page.screen === screen ? fade : 0);
+    entry.pieces.update(dt, clock.time, active && !reduceMotion.matches);
+  }
+}
+
+function render(now) {
+  // The first frame's timestamp can come from just before the loop restarted.
+  const elapsed = Math.max(now - lastFrame, 0) / 1000;
+  lastFrame = now;
+  if (flight.atDesk && !pen?.dragging) eased.lerp(mouse, 0.06); // the view holds still while writing
   camera.position.copy(home).add(new THREE.Vector3(eased.x * 0.09, -eased.y * 0.05, 0));
   camera.lookAt(homeAim);
+  flight.update(camera, elapsed);
+  phoneLift?.apply(flight.state.lifts ? flight.state.lift : 0);
+  const near = flight.state.t > 0.5 ? CLOSE_NEAR : baseNear;
+  if (camera.near !== near) {
+    camera.near = near;
+    camera.updateProjectionMatrix();
+    post.uniforms.uNear.value = near;
+  }
+  camera.updateMatrixWorld();
+  const free = flight.atDesk && !pen?.dragging;
+  toys?.update(camera, elapsed, pointer, free);
+  hover?.update(camera, elapsed, free);
+  pen?.update(elapsed, pointer, flight.atDesk);
+  updatePointerTarget();
+  if (pen?.dragging) renderer.domElement.style.cursor = 'grabbing';
+  else if (pen?.over) renderer.domElement.style.cursor = 'grab';
+  else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
+  updateScreens(elapsed);
   renderer.setRenderTarget(colorRT);
   renderer.render(scene, camera);
   const bg = scene.background;
   scene.background = null;
   scene.overrideMaterial = idMaterial;
+  shell.visible = false;
+  if (pen) pen.ink.visible = false; // ink never draws outlines
+  renderer.shadowMap.autoUpdate = false; // this pass reuses the shadows from the color pass
   renderer.setRenderTarget(normalRT);
   renderer.setClearColor(0x000000, 0);
   renderer.render(scene, camera);
   scene.overrideMaterial = null;
+  shell.visible = true;
+  if (pen) pen.ink.visible = true;
+  renderer.shadowMap.autoUpdate = true;
   scene.background = bg;
   renderer.setRenderTarget(null);
   renderer.render(screenScene, screenCam);
+  if (flight.state.t === 1 && !flight.state.direction) renderer.setAnimationLoop(null);
 }
 
 let nextId = 1;
@@ -252,6 +297,16 @@ function tagForOutlines(mesh) {
   };
 }
 
+// Each period starts with the lamp in its usual state, and a click can flip it from there.
+let currentPalette = null;
+let lampOn = false;
+function setLamp(on) {
+  lampOn = on;
+  lampLight.intensity = on ? LAMP : 0;
+  rimOn.value = on && currentPalette.sun === 0 ? 1 : 0;
+  BULB.color.set(on ? '#FFF3D6' : currentPalette.materials.M_Sheet[1]);
+}
+
 function applyPalette(name) {
   const p = PALETTES[name];
   for (const [k, [lit, shadow, deep]] of Object.entries(p.materials)) {
@@ -260,9 +315,37 @@ function applyPalette(name) {
     TONES[k].uDeep.value.set(deep);
   }
   scene.background.set(p.sky);
+  key.intensity = p.sun;
+  key.position.set(...p.sunFrom).normalize().multiplyScalar(SUN_DISTANCE).add(key.target.position);
+  rimColor.value.set(p.materials.M_Main[0]);
+  currentPalette = p;
+  setLamp(p.lamp > 0);
+  pen?.setInk(p.materials.M_Dark[0]);
   SCREEN.color.set(p.screen);
-  post.uniforms.uInk.value.set(p.ink);
+  post.uniforms.uInk.value.set(p.line);
   p.skyline.forEach((c, i) => SKYLINE[i].color.set(c));
+  const { paper, ink } = p;
+  // Hover panels stay light even in shadow, so their contents remain readable.
+  const paperColor = new THREE.Color(paper), inkColor = new THREE.Color(ink);
+  TONES.M_Panel.uLit.value.copy(paperColor);
+  TONES.M_Panel.uShadow.value.copy(paperColor).lerp(inkColor, 0.12);
+  TONES.M_Panel.uDeep.value.copy(paperColor).lerp(inkColor, 0.18);
+  // Dark panels sit on a dark room, so in lamp-lit periods they use one flat, lighter blue.
+  const lampPanel = p.lamp ? new THREE.Color(p.materials.M_Main[1]).lerp(new THREE.Color(p.materials.M_Main[0]), 0.14) : null;
+  if (lampPanel) for (const tone of ['uLit', 'uShadow', 'uDeep']) TONES.M_Panel[tone].value.copy(lampPanel);
+  ['uLit', 'uShadow', 'uDeep'].forEach((tone, i) => {
+    TONES.M_Stage[tone].value.set(p.materials.M_Dark[i]);
+    if (lampPanel) TONES.M_Stage[tone].value.copy(lampPanel);
+  });
+  const css = (color) => `#${color.getHexString()}`;
+  Object.assign(pieceColors, {
+    paper, ink, accent: p.materials.M_Accent[0],
+    muted: css(paperColor.clone().lerp(inkColor, 0.45)),
+    soft: p.materials.M_Paper[0],
+    onDark: p.materials.M_Main[0], // for text on dark panels, in every period
+  });
+  setPageColors(name);
+  for (const { card } of cards.values()) card.setColors(paper, ink, p.materials.M_Main[0], p.materials.M_Dark[2]);
 }
 
 // The skyline is flat layers well outside the window. Layers sit at different distances
@@ -270,7 +353,6 @@ function applyPalette(name) {
 const SKYLINE_BEARING = THREE.MathUtils.degToRad(41);
 const SKYLINE_BASE = Math.tan(THREE.MathUtils.degToRad(24));
 const LAYERS = [['far', 95], ['mid', 75], ['near', 60]];
-let skyline = null;
 
 function toShape(item) {
   const { pts, holes = [] } = Array.isArray(item) ? { pts: item } : item;
@@ -280,16 +362,8 @@ function toShape(item) {
   return shape;
 }
 
-let skylineRequest = 0;
-async function showSkyline(city) {
-  const request = ++skylineRequest;
-  const { default: data } = await CITIES[city].load();
-  if (request !== skylineRequest) return;
-  if (skyline) {
-    scene.remove(skyline);
-    skyline.traverse((o) => o.geometry?.dispose());
-  }
-  skyline = new THREE.Group();
+function addSkyline() {
+  const skyline = new THREE.Group();
   const dir = new THREE.Vector3(-Math.cos(SKYLINE_BEARING), 0, -Math.sin(SKYLINE_BEARING));
   LAYERS.forEach(([name, distance], i) => {
     const layer = new THREE.Group();
@@ -297,7 +371,7 @@ async function showSkyline(city) {
     layer.position.y = home.y - distance * SKYLINE_BASE;
     layer.scale.setScalar(distance / 60);
     layer.lookAt(home.x, layer.position.y, home.z);
-    data[name].forEach((item, order) => {
+    skylineData[name].forEach((item, order) => {
       const mesh = new THREE.Mesh(new THREE.ShapeGeometry(toShape(item), 8), SKYLINE[i]);
       mesh.position.z = order * 0.02; // keeps overlapping buildings off a shared plane
       tagForOutlines(mesh);
@@ -327,27 +401,64 @@ function reviewPanel(state) {
     });
     panel.append(...buttons);
   };
-  group('Palette', PALETTES, state.palette, applyPalette);
-  group('Skyline', CITIES, state.city, showSkyline);
+  group('Time of day', PALETTES, state.palette, applyPalette);
   document.body.append(panel);
 }
 
-new GLTFLoader().load(`${import.meta.env.BASE_URL}models/desk.glb`, (gltf) => {
+let navigation = null;
+
+const loadDesk = () => new GLTFLoader().load(`${import.meta.env.BASE_URL}models/desk.glb`, (gltf) => {
   const root = gltf.scene;
   root.traverse((o) => {
     if (!o.isMesh) return;
     tagForOutlines(o);
     const name = o.material.name;
+    if (name === 'M_Bulb') {
+      o.material = BULB;
+      return;
+    }
     if (name === 'M_Screen') {
       o.material = SCREEN;
       o.castShadow = true;
       return;
     }
-    o.material = MATERIALS[name] ?? MATERIALS.M_Main;
+    const isChair = o.name.startsWith('Chair_') || o.parent?.name.startsWith('Chair_');
+    o.material = (isChair && CHAIR[name]) || MATERIALS[name] || MATERIALS.M_Main;
     o.castShadow = o.receiveShadow = true;
   });
   scene.add(root);
-  root.updateMatrixWorld(true);
+  hover = createHover(root);
+  toys = createDeskToys(root);
+  pen = createPenDrawing(root, renderer.domElement, () => camera);
+
+  // The lamp sits at the bulb, shining out of the shade.
+  const head = root.getObjectByName('Lamp_Joint3');
+  head.updateWorldMatrix(true, false);
+  const aim = new THREE.Vector3(0, 1, 0).transformDirection(head.matrixWorld);
+  head.getWorldPosition(lampLight.position).addScaledVector(aim, 0.06);
+  lampLight.target.position.copy(lampLight.position).add(aim);
+  scene.add(lampLight, lampLight.target);
+
+  const measured = {};
+  const pickable = { Lamp: LAMP_TARGET };
+  for (const page of Object.values(PAGES)) {
+    const mesh = root.getObjectByName(page.screen);
+    const screen = measureScreen(mesh, page.flat);
+    measured[page.screen] = screen;
+    if (page.flat) {
+      const eye = gltf.cameras[0].getWorldPosition(new THREE.Vector3());
+      phoneLift = createPhoneLift(root.getObjectByName(page.object), screen, eye);
+      measured[page.screen] = phoneLift.screen;
+    }
+    const card = page.flat ? createPhoneCard(mesh) : createScreenCard(mesh, page.label, screen.width / screen.height);
+    const facing = page.flat ? { center: screen.center, up: new THREE.Vector3(0, 1, 0), normal: new THREE.Vector3(0.25, 0, 0.97).normalize() } : screen;
+    const pieces = createHoverPieces(page.pieces, facing, MATERIALS, tagForOutlines, pieceColors);
+    scene.add(pieces.group);
+    cards.set(page, { card, pieces, hover: 0 });
+    pickable[page.object] = page;
+  }
+  flight = createFlight(measured, { requestFrames, reduceMotion });
+  pick = createPicker([root], pickable); // only the objects respond, never their hover panels
 
   const src = gltf.cameras[0];
   camera = src.clone();
@@ -355,16 +466,33 @@ new GLTFLoader().load(`${import.meta.env.BASE_URL}models/desk.glb`, (gltf) => {
   const forward = src.getWorldDirection(new THREE.Vector3());
   homeAim.copy(home).addScaledVector(forward, home.distanceTo(new THREE.Vector3(0, 0.8, 0)));
   camera.far = 220; // far enough for the skyline layers
+  baseNear = camera.near;
   post.uniforms.uNear.value = camera.near;
   post.uniforms.uFar.value = camera.far;
   resize();
-  renderer.setAnimationLoop(render);
-  window.__desk = { scene, get camera() { return camera; }, renderer };
+  navigation.attachDesk(flight);
+  window.__desk = { scene, get camera() { return camera; }, renderer, hover, flight, navigation, toys, pen, get lampOn() { return lampOn; } };
 
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const palette = PALETTES[params.get('palette')] ? params.get('palette') : 'harbor';
-  const city = CITIES[params.get('city')] ? params.get('city') : cityForTimezone(zone);
+  const palette = initialPalette();
   applyPalette(palette);
-  showSkyline(city);
-  if (!params.has('clean')) reviewPanel({ palette, city });
+  addSkyline();
+  if (!params.has('clean')) reviewPanel({ palette });
+  if (!navigation.onPage) requestFrames();
 });
+
+renderer.domElement.addEventListener('click', (e) => {
+  if (!flight?.atDesk || pen?.takeClick()) return;
+  const target = pick(camera, e.clientX, e.clientY);
+  if (target === LAMP_TARGET) setLamp(!lampOn);
+  else if (target) navigation.go(Object.keys(PAGES).find((path) => PAGES[path] === target));
+});
+addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; });
+// Scrolling over the laptop takes over its timeline.
+addEventListener('wheel', (e) => {
+  if (!e.ctrlKey && hovered) cards.get(hovered)?.pieces.scrub(e.deltaY + e.deltaX);
+}, { passive: true });
+
+export function startDesk(nav) {
+  navigation = nav;
+  loadDesk();
+}

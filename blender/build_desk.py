@@ -297,7 +297,7 @@ KEY_ROWS = [
     (1.0, [1.5] + [1] * 12 + [1.5]),
     (1.0, [1.75] + [1] * 11 + [2.25]),
     (1.0, [2.25] + [1] * 10 + [2.75]),
-    (1.0, [1, 1, 1.25, 1.25, 5.5, 1.25, 1.25, 1, 1, 1]),
+    (1.0, [1, 1, 1.25, 1.25, 5, 1.25, 1.25, 1, 1, 1]),
 ]
 
 
@@ -401,6 +401,7 @@ def fillet(pts, r, n=3, closed=False):
 # -------------------------------------------------------------------- build
 M = {k: toon(k, *v) for k, v in PALETTE.items()}
 M_SCREEN = flat("M_Screen", "#E0EAF3")
+M_BULB = flat("M_Bulb", "#F4EFE2")
 MAIN, PAPER, SHEET, DARK = M["M_Main"], M["M_Paper"], M["M_Sheet"], M["M_Dark"]
 
 
@@ -548,6 +549,22 @@ mesh("Monitor_Bezel", rrect_geo(MW - 0.003, MH - 0.003, 0.0002, 0.0055, 3), DARK
 mesh("Monitor_Back", loft_geo([(0.59, 0.33, 0.02, 0), (0.5, 0.28, 0.03, 0.012), (0.3, 0.2, 0.03, 0.022)]), MAIN, pan,
      loc=(0, 0.004, 0), rot=(R(-90), 0, 0))
 screen_quad("Monitor_Screen", MW - 0.016, MH - 0.018, -(MH - 0.018) / 2, -0.0043, pan)
+
+# Desk lamp in the back corner, behind the laptop and beside the books. Joints turn on
+# local Y, and the bulb sits inside the ribbed shade. The web scene turns it on at night.
+lamp = group("Lamp", **on_desk(-0.72, 0.28, -28))
+mesh("Lamp_Base", lathe_geo([(0.074, 0), (0.074, 0.012), (0.05, 0.022)], 24), MAIN, lamp)
+j1 = group("Lamp_Joint1", lamp, loc=(0, 0, 0.022), rot=(0, R(-14), 0))
+mesh("Lamp_ArmLower", tube_geo([(0, 0, 0), (0, 0, 0.34)], 0.0065, 8), MAIN, j1, smooth=True)
+j2 = group("Lamp_Joint2", j1, loc=(0, 0, 0.34), rot=(0, R(84), 0))
+mesh("Lamp_ArmUpper", tube_geo([(0, 0, 0), (0, 0, 0.3)], 0.0065, 8), MAIN, j2, smooth=True)
+mesh("Lamp_Knuckle", lathe_geo([(0.016, -0.012), (0.016, 0.012)], 12), MAIN, j2,
+     rot=(R(90), 0, 0), smooth=True)
+j3 = group("Lamp_Joint3", j2, loc=(0, 0, 0.3), rot=(0, R(88), 0))
+mesh("Lamp_Neck", lathe_geo([(0.03, 0), (0.03, 0.02)], 12), MAIN, j3)
+mesh("Lamp_Shade", lathe_geo([(0.03, 0.02), (0.048, 0.055)], 26, ribs=0.11, cap_start=False, cap_end=False), MAIN, j3)
+mesh("Lamp_Skirt", lathe_geo([(0.05, 0.055), (0.092, 0.13)], 26, cap_start=False, cap_end=False), MAIN, j3)
+mesh("Lamp_Bulb", lathe_geo([(0.014, 0.03), (0.026, 0.055), (0.018, 0.08), (0.0, 0.088)], 12), M_BULB, j3, smooth=True)
 
 # Pencil cup
 cup = group("PencilCup", **on_desk(0.40, 0.24))

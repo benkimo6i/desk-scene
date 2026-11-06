@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Desk scene review</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #1E4DB5; overflow: hidden; }
+      :root { --paper: #EFE6D2; --ink: #0B4C92; --tile: color-mix(in srgb, var(--ink) 14%, var(--paper)); }
+      html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; }
       canvas { display: block; width: 100vw; height: 100vh; }
       #review { position: fixed; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
         max-width: calc(100vw - 48px); padding: 8px 10px; border-radius: 8px; background: #fffd; color: #123;
@@ -13,9 +14,67 @@
       #review span { font-weight: 600; margin-left: 6px; }
       #review button { padding: 4px 8px; border: 1px solid #1236; border-radius: 5px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
       #review button[aria-pressed='true'] { background: #123; color: #fff; }
+      #skip { position: fixed; top: 8px; left: 8px; z-index: 30; display: flex; gap: 8px; }
+      #skip a { position: absolute; left: -9999px; padding: 8px 12px; background: #fff; color: #0B4C92; font: 14px system-ui, sans-serif; }
+      #skip a:focus { position: static; }
+      #page { position: fixed; inset: 0; z-index: 20; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--paper); color: var(--ink);
+        font: 15px/1.35 'Inter Tight Variable', Helvetica, Arial, sans-serif; }
+      /* The blank screen and the page are the same color, and the columns stay put. Only the copy fades. */
+      #page .reveal { animation: appear 320ms linear both; animation-delay: var(--delay, 0ms); }
+      #page header, #page section { transition: border-color 180ms linear; }
+      #page.leaving header, #page.leaving section { border-color: transparent; }
+      #page.leaving .reveal { opacity: 0; transition: opacity 180ms linear; animation: none; }
+      @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { #page .reveal { animation-delay: 0ms; } }
+      #page[hidden] { display: none; }
+      /* 12-column grid: background 6, resume + portfolio 6. */
+      #page { --columns: 6fr 6fr; --pad: 20px; }
+      #page a { color: inherit; text-decoration: none; }
+      #page a:hover, #page a:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+      #page header { display: grid; grid-template-columns: var(--columns); padding: 14px 0 clamp(26px, 3.4vw, 44px); border-bottom: 1px solid currentColor; }
+      #page header a { font-size: 15px; font-weight: 600; padding: 0 var(--pad); }
+      #page .switch { grid-column: 2; }
+      /* The left offset removes the first letter's built-in side space, so its stem lines up with the small text. */
+      #page h1 { grid-column: 1 / -1; margin: clamp(20px, 5vh, 56px) 0 0 calc(-0.047em + 0.8px); padding: 0 var(--pad); font-size: clamp(64px, 10.5vw, 168px); font-weight: 700; line-height: 0.9; letter-spacing: -0.035em; outline: none; }
+      #page main { display: grid; grid-template-columns: var(--columns); min-height: 0; }
+      #page section { min-height: 0; overflow-y: auto; padding: 16px var(--pad) 48px; border-left: 1px solid currentColor; outline-offset: -3px; scrollbar-width: thin; scrollbar-color: currentColor transparent; }
+      #page section:first-child { border-left: 0; }
+      #page h2 { margin: 0 0 28px; font-size: 15px; font-weight: 600; }
+      #page .block { margin-bottom: 28px; padding-top: 8px; border-top: 1px solid currentColor; }
+      #page h3 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+      #page p { margin: 0; max-width: 46ch; }
+      #page .about { max-width: 52ch; margin-bottom: 14px; font-size: 19px; line-height: 1.3; }
+      #page section > .cta { display: inline-flex; margin: 0 0 40px; }
+      #page section > h2:not(:first-child) { margin-top: 40px; }
+      #page section > .cta + h2 { margin-top: 0; }
+      #page .entry { display: grid; grid-template-columns: 3fr 2fr 1fr; gap: 12px; margin-bottom: 14px; }
+      #page .entry h3 { margin: 0; }
+      #page .entry p { margin: 0; }
+      #page .entry p:last-child:not(:nth-child(2)) { justify-self: end; white-space: nowrap; }
+      #page .project .image { display: block; aspect-ratio: 16 / 9; margin-bottom: 10px; background: var(--tile); transition: background 160ms linear; }
+      #page a.image:hover { background: color-mix(in srgb, var(--ink) 24%, var(--paper)); }
+      /* Case study: the header stays the same, and the whole page scrolls as one column. */
+      #page.case { display: block; overflow-y: auto; scrollbar-width: thin; scrollbar-color: currentColor transparent; }
+      #page.case main { display: block; padding-bottom: 20px; }
+      #page .media { aspect-ratio: 16 / 9; margin: 20px var(--pad); background: var(--tile); }
+      #page .row { display: grid; grid-template-columns: 6fr 6fr; padding: 16px 0 44px; }
+      #page .row > * { padding: 0 var(--pad); }
+      #page .row h2 { margin-bottom: 12px; }
+      #page .details { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pad); }
+      #page .pager { padding-top: 16px; border-top: 1px solid currentColor; font-weight: 600; }
+      .tile-clone { position: fixed; z-index: 25; background: var(--tile); }
+      #page .cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-weight: 600; }
+      #page .arrow { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; transition: transform 160ms ease-out; }
+      #page .cta:hover .arrow { transform: translate(2px, -2px); }
     </style>
   </head>
   <body>
-    <script type="module" src="/src/main.js"></script>
+    <nav id="skip" aria-label="Portfolios">
+      <a href="/engineering" data-link>Engineering portfolio</a>
+      <a href="/design" data-link>Design portfolio</a>
+      <a href="/contact" data-link>Contact</a>
+    </nav>
+    <div id="page" hidden></div>
+    <script type="module" src="/src/entry.js"></script>
   </body>
 </html>
