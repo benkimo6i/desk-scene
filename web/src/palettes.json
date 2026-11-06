@@ -1,0 +1,350 @@
+{
+  "predawn": {
+    "label": "Pre-dawn",
+    "sky": "#6B6A9E",
+    "screen": "#F1D4C9",
+    "line": "#0C0E1B",
+    "paper": "#1B1F3B",
+    "ink": "#E8B7A5",
+    "skyline": [
+      "#5F5F91",
+      "#505282",
+      "#414573"
+    ],
+    "sun": 0,
+    "sunFrom": [
+      -1,
+      0.24,
+      0.3
+    ],
+    "lamp": 4,
+    "bulb": "#E8B7A5",
+    "materials": {
+      "M_Main": [
+        "#E8B7A5",
+        "#3A3F6B",
+        "#1B1F3B"
+      ],
+      "M_Paper": [
+        "#D3A99E",
+        "#887585",
+        "#72657E"
+      ],
+      "M_Blueprint": [
+        "#C59F99",
+        "#7C6D81",
+        "#675E7A"
+      ],
+      "M_Sheet": [
+        "#DEB0A2",
+        "#947D89",
+        "#837183"
+      ],
+      "M_Dark": [
+        "#3A3F6B",
+        "#1B1F3B",
+        "#131629"
+      ],
+      "M_Green": [
+        "#ACBA9C",
+        "#496C65",
+        "#304D4A"
+      ],
+      "M_Accent": [
+        "#D9553B",
+        "#A8402F",
+        "#8E3528"
+      ]
+    }
+  },
+  "sunrise": {
+    "label": "Sunrise",
+    "sky": "#F4A6A0",
+    "screen": "#FFF1DA",
+    "line": "#151B2F",
+    "paper": "#FFE8C2",
+    "ink": "#3D4E81",
+    "skyline": [
+      "#C69098",
+      "#8F768F",
+      "#585B86"
+    ],
+    "sun": 8,
+    "sunFrom": [
+      -1,
+      0.24,
+      0.3
+    ],
+    "lamp": 0,
+    "bulb": "#FFE8C2",
+    "materials": {
+      "M_Main": [
+        "#FFE8C2",
+        "#3D4E81",
+        "#2F3D69"
+      ],
+      "M_Paper": [
+        "#E8D6BA",
+        "#94939E",
+        "#7B7F96"
+      ],
+      "M_Blueprint": [
+        "#D8C9B5",
+        "#87899A",
+        "#6F7692"
+      ],
+      "M_Sheet": [
+        "#F3DFBE",
+        "#A29EA3",
+        "#8E8F9C"
+      ],
+      "M_Dark": [
+        "#3D4E81",
+        "#2F3D69",
+        "#212B4A"
+      ],
+      "M_Green": [
+        "#B1C4A2",
+        "#4A706B",
+        "#38595C"
+      ],
+      "M_Accent": [
+        "#D9553B",
+        "#A8402F",
+        "#8E3528"
+      ]
+    }
+  },
+  "morning": {
+    "label": "Morning",
+    "sky": "#E2F0F8",
+    "screen": "#EDF5F9",
+    "line": "#0D2C4A",
+    "paper": "#F3EEDF",
+    "ink": "#1F6AA8",
+    "skyline": [
+      "#C6DDEE",
+      "#92BCDC",
+      "#4C86B8"
+    ],
+    "sun": 8,
+    "sunFrom": [
+      -1,
+      0.42,
+      0.55
+    ],
+    "lamp": 0,
+    "bulb": "#F3EEDF",
+    "materials": {
+      "M_Main": [
+        "#F3EEDF",
+        "#2F7FC1",
+        "#2369A6"
+      ],
+      "M_Paper": [
+        "#DBE1DB",
+        "#87B1CF",
+        "#6EA3CB"
+      ],
+      "M_Blueprint": [
+        "#CCD8D9",
+        "#79A9CC",
+        "#629CC9"
+      ],
+      "M_Sheet": [
+        "#E7E7DD",
+        "#95B9D1",
+        "#81AECE"
+      ],
+      "M_Dark": [
+        "#2F7FC1",
+        "#2369A6",
+        "#1A5488"
+      ],
+      "M_Green": [
+        "#A4C4A0",
+        "#4F8A74",
+        "#3F7464"
+      ],
+      "M_Accent": [
+        "#D9553B",
+        "#A8402F",
+        "#8E3528"
+      ]
+    }
+  },
+  "afternoon": {
+    "label": "Afternoon",
+    "sky": "#DCE8F1",
+    "screen": "#E0EAF3",
+    "line": "#06203F",
+    "paper": "#EFE6D2",
+    "ink": "#0B4C92",
+    "skyline": [
+      "#B5CCE2",
+      "#7FA3CB",
+      "#2F5F9A"
+    ],
+    "sun": 8,
+    "sunFrom": [
+      -1,
+      0.55,
+      0.8
+    ],
+    "lamp": 0,
+    "bulb": "#EFE6D2",
+    "materials": {
+      "M_Main": [
+        "#EFE6D2",
+        "#0B4C92",
+        "#083A72"
+      ],
+      "M_Paper": [
+        "#C5D6E6",
+        "#7FA0C4",
+        "#6688AE"
+      ],
+      "M_Blueprint": [
+        "#B9C8D8",
+        "#6F90B6",
+        "#5C7DA3"
+      ],
+      "M_Sheet": [
+        "#DCE2E6",
+        "#94ACC8",
+        "#7C96B4"
+      ],
+      "M_Dark": [
+        "#0B4C92",
+        "#083A72",
+        "#062C58"
+      ],
+      "M_Green": [
+        "#9DBB9A",
+        "#4F7F62",
+        "#3E6B54"
+      ],
+      "M_Accent": [
+        "#D9553B",
+        "#A8402F",
+        "#8E3528"
+      ]
+    }
+  },
+  "sunset": {
+    "label": "Sunset",
+    "sky": "#F6C177",
+    "screen": "#FFEEC8",
+    "line": "#1A2134",
+    "paper": "#FFE3A3",
+    "ink": "#4A5D8C",
+    "skyline": [
+      "#CBA87C",
+      "#978A83",
+      "#646C89"
+    ],
+    "sun": 8,
+    "sunFrom": [
+      -1,
+      0.2,
+      0.95
+    ],
+    "lamp": 0,
+    "bulb": "#FFE3A3",
+    "materials": {
+      "M_Main": [
+        "#FFE3A3",
+        "#4A5D8C",
+        "#394974"
+      ],
+      "M_Paper": [
+        "#E9D3A0",
+        "#9B9996",
+        "#848893"
+      ],
+      "M_Blueprint": [
+        "#DBC89E",
+        "#8F9095",
+        "#798092"
+      ],
+      "M_Sheet": [
+        "#F4DBA2",
+        "#A8A398",
+        "#969596"
+      ],
+      "M_Dark": [
+        "#4A5D8C",
+        "#394974",
+        "#283351"
+      ],
+      "M_Green": [
+        "#B1C39C",
+        "#4E756F",
+        "#3C5D61"
+      ],
+      "M_Accent": [
+        "#D9553B",
+        "#A8402F",
+        "#8E3528"
+      ]
+    }
+  },
+  "night": {
+    "label": "Night",
+    "sky": "#4A6FA5",
+    "screen": "#F7DCB0",
+    "line": "#070C1B",
+    "paper": "#0F1A3D",
+    "ink": "#F2C57C",
+    "skyline": [
+      "#416197",
+      "#355085",
+      "#2A3F74"
+    ],
+    "sun": 0,
+    "sunFrom": [
+      -1,
+      0.55,
+      0.8
+    ],
+    "lamp": 4,
+    "bulb": "#F2C57C",
+    "materials": {
+      "M_Main": [
+        "#F2C57C",
+        "#24366B",
+        "#0F1A3D"
+      ],
+      "M_Paper": [
+        "#D9B47A",
+        "#817673",
+        "#666470"
+      ],
+      "M_Blueprint": [
+        "#C9A879",
+        "#726C71",
+        "#5A5B6F"
+      ],
+      "M_Sheet": [
+        "#E6BC7B",
+        "#8F8074",
+        "#7B7272"
+      ],
+      "M_Dark": [
+        "#24366B",
+        "#0F1A3D",
+        "#0B122B"
+      ],
+      "M_Green": [
+        "#AEBD94",
+        "#426965",
+        "#2B4B4B"
+      ],
+      "M_Accent": [
+        "#D9553B",
+        "#A8402F",
+        "#8E3528"
+      ]
+    }
+  }
+}

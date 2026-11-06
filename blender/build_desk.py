@@ -8,22 +8,20 @@ is in the -X wall. Every desk item is a top-level Empty with its parts as
 children, and moving parts hang off pivot Empties (Laptop_Lid, Lamp_Joint*...).
 """
 import bpy
+import json
 from math import radians as R, pi, cos, sin
 from mathutils import Vector
 
 ROOT = "DeskScene"
+LAMP_WATTS = 40.0
 DESK_Z = 0.74
 
-# lit, shadow, deep (hex, sRGB)
-PALETTE = {
-    "M_Main":      ("#EFE6D2", "#0B4C92", "#083A72"),
-    "M_Paper":     ("#C5D6E6", "#7FA0C4", "#6688AE"),
-    "M_Blueprint": ("#B9C8D8", "#6F90B6", "#5C7DA3"),
-    "M_Sheet":     ("#DCE2E6", "#94ACC8", "#7C96B4"),
-    "M_Dark":      ("#0B4C92", "#083A72", "#062C58"),
-    "M_Green":     ("#9DBB9A", "#4F7F62", "#3E6B54"),
-    "M_Accent":    ("#D9553B", "#A8402F", "#8E3528"),
-}
+# Colors, sun and lamp for each period are shared with the website.
+PALETTES_FILE = "/Users/benkim/Development/desk-scene/web/src/palettes.json"
+PERIOD = globals().get("PERIOD", "afternoon")
+with open(PALETTES_FILE) as f:
+    P = json.load(f)[PERIOD]
+PALETTE = P["materials"]  # each material is lit, shadow, deep (hex, sRGB)
 
 
 # ---------------------------------------------------------------- materials
@@ -400,8 +398,8 @@ def fillet(pts, r, n=3, closed=False):
 
 # -------------------------------------------------------------------- build
 M = {k: toon(k, *v) for k, v in PALETTE.items()}
-M_SCREEN = flat("M_Screen", "#E0EAF3")
-M_BULB = flat("M_Bulb", "#F4EFE2")
+M_SCREEN = flat("M_Screen", PALETTE["M_Dark"][2] if P["lamp"] else P["screen"])  # screens stay dark by lamplight
+M_BULB = flat("M_Bulb", P["bulb"])
 MAIN, PAPER, SHEET, DARK = M["M_Main"], M["M_Paper"], M["M_Sheet"], M["M_Dark"]
 
 
@@ -676,15 +674,38 @@ for i in range(11):
     mesh(f"Plant_Leaf_{i}", leaf(ln, 0.042, 0.05 + 0.02 * (i % 2)), M["M_Green"], pl,
          loc=(0, 0, 0.07), rot=(0, 0, R(a)), smooth=True)
 
+# --- room shell: a hidden ceiling and a longer window wall, so sunlight can only enter
+# through the window. Never visible to the camera, here or on the website.
+use("RoomShell")
+M_SHELL = bpy.data.materials.get("M_Shell") or bpy.data.materials.new("M_Shell")
+for shell_name, shell_geo in (("Shell_Ceiling", box_geo(5.4, 18, 0.2, (0.5, -7.8, 3.1))),
+                              ("Shell_Wall", box_geo(0.2, 13, 3.2, (-2.1, -9.5, 1.5)))):
+    mesh(shell_name, shell_geo, M_SHELL).visible_camera = False
+
 # --- light and camera
 use("Rig")
 key_d = bpy.data.lights.new("Sun_Key", "SUN")
-key_d.energy = 8.0
+key_d.energy = P["sun"]
 key_d.angle = R(0.25)
 key_d.use_shadow = True
 key = bpy.data.objects.new("Sun_Key", key_d)
 ACTIVE.objects.link(key)
-key.rotation_euler = Vector((-1.0, -0.8, 0.55)).to_track_quat("Z", "Y").to_euler()
+sx, sy, sz = P["sunFrom"]  # web axes: x, y up, z toward the camera
+key.rotation_euler = Vector((sx, -sz, sy)).to_track_quat("Z", "Y").to_euler()
+
+# Lamp light, for the periods that use it. It sits at the bulb and shines out of the shade.
+bpy.context.view_layer.update()
+head = bpy.data.objects["Lamp_Joint3"].matrix_world
+lamp_aim = head.to_3x3().col[2].normalized()
+lamp_d = bpy.data.lights.new("Lamp_Light", "SPOT")
+lamp_d.energy = LAMP_WATTS if P["lamp"] else 0.0
+lamp_d.spot_size = R(80)
+lamp_d.spot_blend = 0.0
+lamp_d.use_shadow = True
+lamp_ob = bpy.data.objects.new("Lamp_Light", lamp_d)
+ACTIVE.objects.link(lamp_ob)
+lamp_ob.location = head.translation + lamp_aim * 0.1  # just past the bulb, which would block it
+lamp_ob.rotation_euler = lamp_aim.to_track_quat("-Z", "Y").to_euler()
 
 fill_d = bpy.data.lights.new("Fill_Sky", "SUN")
 fill_d.energy = 0.62
@@ -711,7 +732,7 @@ t.nodes.clear()
 out = t.nodes.new("ShaderNodeOutputWorld")
 mix = t.nodes.new("ShaderNodeMixShader")
 sky = t.nodes.new("ShaderNodeBackground")
-sky.inputs[0].default_value = lin("#DCE8F1")
+sky.inputs[0].default_value = lin(P["sky"])
 none = t.nodes.new("ShaderNodeBackground")
 none.inputs[0].default_value = (0, 0, 0, 1)
 lp = t.nodes.new("ShaderNodeLightPath")
@@ -730,7 +751,7 @@ if hasattr(scene.render, "use_freestyle"):
     scene.render.line_thickness = 0.55
     fs = bpy.context.view_layer.freestyle_settings
     for ls_ in fs.linesets:
-        ls_.linestyle.color = lin("#06203F")[:3]
+        ls_.linestyle.color = lin(P["line"])[:3]
         ls_.linestyle.alpha = 0.8
 
 tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons)

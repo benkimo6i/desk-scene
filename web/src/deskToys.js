@@ -108,5 +108,10 @@ export function createDeskToys(root) {
     }
   }
 
-  return { update, keys, get chairAngle() { return angle; } };
+  return {
+    update,
+    keys,
+    get chairAngle() { return angle; },
+    get moving() { return Math.abs(angle) > 1e-4 || keys.some((key) => key.press > 0); },
+  };
 }

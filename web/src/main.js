@@ -21,6 +21,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false; // redrawn only when something in the room moves
 document.body.append(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -41,19 +42,10 @@ const fill = new THREE.DirectionalLight('#fff', 0.62);
 fill.position.set(0.2, 1, 0.3);
 scene.add(key, key.target, fill);
 
-// A hidden ceiling and a longer window wall. They only block sunlight, so the sun can reach
-// the room through the window alone. They never draw on camera or in the outline pass.
+// The hidden room shell from Blender. It only blocks sunlight, so the sun reaches the
+// room through the window alone. It never draws on camera or in the outline pass.
 const shellMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
 const shell = new THREE.Group();
-for (const [w, h, d, x, y, z] of [
-  [5.4, 0.2, 18, 0.5, 3.1, 7.8], // ceiling
-  [0.2, 3.2, 13, -2.1, 1.5, 9.5], // window wall, past the end of the visible one
-]) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), shellMaterial);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  shell.add(mesh);
-}
 scene.add(shell);
 
 function toonMaterial(tones) {
@@ -210,6 +202,10 @@ let lastFrame = performance.now();
 const cards = new Map(); // page -> { card, pieces, hover }
 const clock = { time: 0 };
 
+let shadowsDirty = true;
+const isRoomMoving = () => hover?.moving || toys?.moving || pen?.moving || flight?.state.lift % 1 > 0
+  || [...cards.values()].some(({ pieces }) => pieces.group.visible);
+
 function requestFrames() {
   lastFrame = performance.now();
   renderer.setAnimationLoop(render);
@@ -266,6 +262,9 @@ function render(now) {
   else if (pen?.over) renderer.domElement.style.cursor = 'grab';
   else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
   updateScreens(elapsed);
+  renderer.shadowMap.needsUpdate = shadowsDirty || isRoomMoving();
+  if (import.meta.env.DEV && window.__desk && renderer.shadowMap.needsUpdate) window.__desk.shadowRedraws += 1;
+  shadowsDirty = false;
   renderer.setRenderTarget(colorRT);
   renderer.render(scene, camera);
   const bg = scene.background;
@@ -273,14 +272,12 @@ function render(now) {
   scene.overrideMaterial = idMaterial;
   shell.visible = false;
   if (pen) pen.ink.visible = false; // ink never draws outlines
-  renderer.shadowMap.autoUpdate = false; // this pass reuses the shadows from the color pass
   renderer.setRenderTarget(normalRT);
   renderer.setClearColor(0x000000, 0);
   renderer.render(scene, camera);
   scene.overrideMaterial = null;
   shell.visible = true;
   if (pen) pen.ink.visible = true;
-  renderer.shadowMap.autoUpdate = true;
   scene.background = bg;
   renderer.setRenderTarget(null);
   renderer.render(screenScene, screenCam);
@@ -303,6 +300,8 @@ let lampOn = false;
 function setLamp(on) {
   lampOn = on;
   lampLight.intensity = on ? LAMP : 0;
+  lampLight.shadow.autoUpdate = on; // no shadow work while the lamp is off
+  shadowsDirty = true;
   rimOn.value = on && currentPalette.sun === 0 ? 1 : 0;
   BULB.color.set(on ? '#FFF3D6' : currentPalette.materials.M_Sheet[1]);
 }
@@ -320,6 +319,7 @@ function applyPalette(name) {
   rimColor.value.set(p.materials.M_Main[0]);
   currentPalette = p;
   setLamp(p.lamp > 0);
+  shadowsDirty = true;
   pen?.setInk(p.materials.M_Dark[0]);
   SCREEN.color.set(p.screen);
   post.uniforms.uInk.value.set(p.line);
@@ -409,8 +409,15 @@ let navigation = null;
 
 const loadDesk = () => new GLTFLoader().load(`${import.meta.env.BASE_URL}models/desk.glb`, (gltf) => {
   const root = gltf.scene;
+  const shellParts = [];
   root.traverse((o) => {
     if (!o.isMesh) return;
+    if (o.name.startsWith('Shell_')) {
+      o.material = shellMaterial;
+      o.castShadow = true;
+      shellParts.push(o);
+      return;
+    }
     tagForOutlines(o);
     const name = o.material.name;
     if (name === 'M_Bulb') {
@@ -427,6 +434,8 @@ const loadDesk = () => new GLTFLoader().load(`${import.meta.env.BASE_URL}models/
     o.castShadow = o.receiveShadow = true;
   });
   scene.add(root);
+  root.updateMatrixWorld(true);
+  shellParts.forEach((part) => shell.attach(part));
   hover = createHover(root);
   toys = createDeskToys(root);
   pen = createPenDrawing(root, renderer.domElement, () => camera);
@@ -471,12 +480,12 @@ const loadDesk = () => new GLTFLoader().load(`${import.meta.env.BASE_URL}models/
   post.uniforms.uFar.value = camera.far;
   resize();
   navigation.attachDesk(flight);
-  window.__desk = { scene, get camera() { return camera; }, renderer, hover, flight, navigation, toys, pen, get lampOn() { return lampOn; } };
+  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, hover, flight, navigation, toys, pen, get lampOn() { return lampOn; } };
 
   const palette = initialPalette();
   applyPalette(palette);
   addSkyline();
-  if (!params.has('clean')) reviewPanel({ palette });
+  if (import.meta.env.DEV && !params.has('clean')) reviewPanel({ palette });
   if (!navigation.onPage) requestFrames();
 });
 

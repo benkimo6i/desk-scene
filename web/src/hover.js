@@ -149,5 +149,5 @@ export function createHover(root) {
     lastCursor.copy(cursor);
   }
 
-  return { update, parts };
+  return { update, parts, get moving() { return parts.some((part) => part.tilt.lengthSq() > 1e-8); } };
 }

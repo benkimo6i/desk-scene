@@ -158,6 +158,7 @@ export function createPenDrawing(root, element, getCamera) {
     ink,
     update,
     get dragging() { return dragging; },
+    get moving() { return hold > 0; },
     get over() { return over; },
     setInk(color) { ink.material.color.set(color); },
     takeClick() {
