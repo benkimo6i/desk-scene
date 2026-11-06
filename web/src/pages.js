@@ -73,19 +73,24 @@ function caseStudyHTML(page) {
     </main>`;
 }
 
-function backgroundHTML(path) {
+function detailsHTML(path) {
   const experience = PROFILE.experience.map(({ role, company, years }) => `
     <div class="block entry"><h3>${role}</h3><p>${company}</p><p>${years}</p></div>`).join('');
   const skills = PROFILE.skills[path].map(({ group, items }) => `
     <div class="block entry"><h3>${group}</h3><p>${items}</p></div>`).join('');
   return `
-    <h2>Background</h2>
-    <p class="about">${PROFILE.about[path]}</p>
-    <a class="cta" href="#resume" onclick="return false">Download resume ${arrow}</a>
     <h2>Experience</h2>
     ${experience}
     <h2>Skills + tools</h2>
     ${skills}`;
+}
+
+function backgroundHTML(path) {
+  return `
+    <h2>Background</h2>
+    <p class="about">${PROFILE.about[path]}</p>
+    <a class="cta" href="#resume" onclick="return false">Download resume ${arrow}</a>
+    ${detailsHTML(path)}`;
 }
 
 function contactHTML(page) {
@@ -103,7 +108,26 @@ function contactHTML(page) {
     </main>`;
 }
 
+// The basic site's front page, used wherever the desk isn't served.
+export const LANDING = { label: 'Benjamin Kim' };
+
+function landingHTML() {
+  const links = [['/engineering', 'Engineering'], ['/design', 'Design'], ['/contact', 'Contact']]
+    .map(([href, label]) => `<a href="${href}" data-link>${label} ${arrow}</a>`).join('');
+  return `
+    <header><h1 tabindex="-1">${LANDING.label}</h1></header>
+    <main>
+      <section aria-label="Background">
+        <p class="about">${PROFILE.about['/']}</p>
+        <nav class="links" aria-label="Portfolios and contact">${links}</nav>
+        <a class="cta" href="#resume" onclick="return false">Download resume ${arrow}</a>
+        ${detailsHTML('/')}
+      </section>
+    </main>`;
+}
+
 export function pageHTML(path, origin) {
+  if (path === '/') return landingHTML();
   const page = resolvePage(path, origin);
   if (page.caseStudy) return caseStudyHTML(page);
   if (path === '/contact') return contactHTML(page);

@@ -170,6 +170,29 @@ const homeAim = new THREE.Vector3();
 const mouse = new THREE.Vector2();
 const eased = new THREE.Vector2();
 
+// As the window narrows, the camera turns toward the desk's center, keeping the monitor,
+// laptop, phone and the phone's lift path in frame.
+const DESK_CENTER = new THREE.Vector3(0, 0.8, 0);
+const FIT_EDGE = 0.92; // leaves room for the cursor drift
+const frameAim = new THREE.Vector3();
+const fitPoints = [];
+const fitCheck = new THREE.Vector3();
+
+function fits() {
+  camera.position.copy(home);
+  camera.lookAt(frameAim);
+  camera.updateMatrixWorld();
+  return fitPoints.every((point) => Math.abs(fitCheck.copy(point).project(camera).x) < FIT_EDGE);
+}
+
+function frameDesk() {
+  for (let turn = 0; turn <= 1; turn += 0.02) {
+    frameAim.lerpVectors(homeAim, DESK_CENTER, turn);
+    if (fits()) return turn;
+  }
+  return null; // doesn't fit at this shape
+}
+
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
@@ -179,6 +202,7 @@ function resize() {
   post.uniforms.uTexel.value.set(1 / size.x, 1 / size.y);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (fitPoints.length) frameDesk();
 }
 addEventListener('resize', resize);
 addEventListener('pointermove', (e) => {
@@ -243,7 +267,7 @@ function render(now) {
   lastFrame = now;
   if (flight.atDesk && !pen?.dragging) eased.lerp(mouse, 0.06); // the view holds still while writing
   camera.position.copy(home).add(new THREE.Vector3(eased.x * 0.09, -eased.y * 0.05, 0));
-  camera.lookAt(homeAim);
+  camera.lookAt(frameAim);
   flight.update(camera, elapsed);
   phoneLift?.apply(flight.state.lifts ? flight.state.lift : 0);
   const near = flight.state.t > 0.5 ? CLOSE_NEAR : baseNear;
@@ -300,7 +324,10 @@ let lampOn = false;
 function setLamp(on) {
   lampOn = on;
   lampLight.intensity = on ? LAMP : 0;
-  lampLight.shadow.autoUpdate = on; // no shadow work while the lamp is off
+  // No shadow work while the lamp is off, but its shadow map must always exist:
+  // surfaces can't draw while a shadow texture is missing.
+  lampLight.shadow.autoUpdate = on;
+  lampLight.shadow.needsUpdate = true;
   shadowsDirty = true;
   rimOn.value = on && currentPalette.sun === 0 ? 1 : 0;
   BULB.color.set(on ? '#FFF3D6' : currentPalette.materials.M_Sheet[1]);
@@ -467,6 +494,11 @@ const loadDesk = () => new GLTFLoader().load(`${import.meta.env.BASE_URL}models/
     pickable[page.object] = page;
   }
   flight = createFlight(measured, { requestFrames, reduceMotion });
+  for (const name of ['Laptop', 'Monitor_Panel', 'Phone', 'Mug']) {
+    const box = new THREE.Box3().setFromObject(root.getObjectByName(name));
+    for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) fitPoints.push(new THREE.Vector3(x, box.min.y, z), new THREE.Vector3(x, box.max.y, z));
+  }
+  fitPoints.push(measured.Phone_Screen.center);
   pick = createPicker([root], pickable); // only the objects respond, never their hover panels
 
   const src = gltf.cameras[0];
@@ -480,13 +512,13 @@ const loadDesk = () => new GLTFLoader().load(`${import.meta.env.BASE_URL}models/
   post.uniforms.uFar.value = camera.far;
   resize();
   navigation.attachDesk(flight);
-  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, hover, flight, navigation, toys, pen, get lampOn() { return lampOn; } };
+  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, hover, flight, navigation, toys, pen, frameDesk, get lampOn() { return lampOn; } };
 
   const palette = initialPalette();
   applyPalette(palette);
   addSkyline();
   if (import.meta.env.DEV && !params.has('clean')) reviewPanel({ palette });
-  if (!navigation.onPage) requestFrames();
+  if (!navigation.onPage && !navigation.basic) requestFrames();
 });
 
 renderer.domElement.addEventListener('click', (e) => {
@@ -500,6 +532,12 @@ addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY 
 addEventListener('wheel', (e) => {
   if (!e.ctrlKey && hovered) cards.get(hovered)?.pieces.scrub(e.deltaY + e.deltaX);
 }, { passive: true });
+
+export function setDeskActive(active) {
+  if (!flight) return;
+  if (active) requestFrames();
+  else renderer.setAnimationLoop(null);
+}
 
 export function startDesk(nav) {
   navigation = nav;

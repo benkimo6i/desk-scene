@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Desk scene review</title>
+    <title>Benjamin Kim</title>
     <style>
       :root { --paper: #EFE6D2; --ink: #0B4C92; --tile: color-mix(in srgb, var(--ink) 14%, var(--paper)); }
       html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; }
@@ -66,6 +66,27 @@
       #page .cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-weight: 600; }
       #page .arrow { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; transition: transform 160ms ease-out; }
       #page .cta:hover .arrow { transform: translate(2px, -2px); }
+      /* Basic site: no desk, and every page is one scrolling column. */
+      body.basic canvas { display: none; }
+      body.basic { background: var(--paper); }
+      body.basic #page { display: block; overflow-y: auto; --pad: 16px; --columns: 1fr 1fr; }
+      body.basic #page h1 { font-size: clamp(40px, 13.5vw, 96px); margin-top: 24px; }
+      body.basic #page header:has(> h1:first-child) h1 { margin-top: 6px; }
+      body.basic #page main { display: block; padding-bottom: 32px; }
+      body.basic #page section { overflow: visible; padding: 16px var(--pad) 28px; border-left: 0; }
+      body.basic #page section + section { border-top: 1px solid currentColor; }
+      body.basic #page section[aria-label='Background']:not(:only-child) { display: none; }
+      body.basic #page section[aria-label='Background']:not(:only-child) + section { border-top: 0; }
+      body.basic #page .row { grid-template-columns: 1fr; gap: 20px; padding-bottom: 28px; }
+      body.basic #page .media { margin: 16px var(--pad); }
+      body.basic #page .entry { grid-template-columns: 1fr auto; gap: 2px 12px; }
+      body.basic #page .entry h3, body.basic #page .entry p { grid-column: 1; }
+      body.basic #page .entry p:last-child:not(:nth-child(2)) { grid-column: 2; grid-row: 1; }
+      body.basic #page .links { margin: 20px 0 24px; }
+      body.basic #page .links a { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid currentColor; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+      body.basic #page .links a:last-child { border-bottom: 1px solid currentColor; }
+      body.basic #page .links .arrow { width: 16px; height: 16px; }
+      body.basic #page section > .cta { margin-bottom: 32px; }
     </style>
   </head>
   <body>

@@ -1,6 +1,6 @@
 // Owns the URL and the page layer. The 3D desk attaches once it has loaded, so a
 // direct link to a portfolio page shows immediately and never waits for the model.
-import { PAGES, pageHTML, resolvePage } from './pages.js';
+import { LANDING, PAGES, pageHTML, resolvePage } from './pages.js';
 
 const FADE_MS = 180;
 const HEADING_MS = 260; // when the header links start, after the h1
@@ -12,7 +12,7 @@ const TILE_COPY_DELAY_MS = 280; // copy starts while the tile is still growing
 
 // Sets the fade order. Columns themselves never move. Copy in view staggers, with the
 // second column running bottom to top; anything below the fold simply fades in place.
-function staggerCopy(pageElement, start = 0) {
+function staggerCopy(pageElement, start = 0, basic = false) {
   const delay = (element, ms) => {
     element.classList.add('reveal');
     element.style.setProperty('--delay', `${start + ms}ms`);
@@ -20,12 +20,14 @@ function staggerCopy(pageElement, start = 0) {
   delay(pageElement.querySelector('h1'), 0);
   pageElement.querySelectorAll('header a').forEach((link, i) => delay(link, HEADING_MS + i * 70));
 
-  // A case study is one long column of copy, so it simply runs top to bottom.
-  const longPage = pageElement.classList.contains('case');
+  // A case study or the basic site is one long column, so copy simply runs top to bottom.
+  const longPage = basic || pageElement.classList.contains('case');
   const columns = longPage ? [pageElement.querySelector('main')] : pageElement.querySelectorAll('section');
   columns.forEach((column, c) => {
     const limit = (longPage ? pageElement : column).getBoundingClientRect().bottom;
-    const items = longPage ? [...column.querySelectorAll('.reveal-item, .pager a')] : [...column.children];
+    const items = longPage
+      ? [...column.querySelectorAll('section > *, .reveal-item, .pager a')].filter((item) => item.offsetParent)
+      : [...column.children];
     const inView = items.filter((item) => item.getBoundingClientRect().top < limit);
     const order = c % 2 ? [...inView].reverse() : inView;
     order.forEach((item, i) => delay(item, COPY_START_MS + i * COPY_STEP_MS));
@@ -33,16 +35,24 @@ function staggerCopy(pageElement, start = 0) {
   });
 }
 
-export function createNavigation(pageElement) {
+export function createNavigation(pageElement, startBasic) {
+  let basic = startBasic;
+  document.body.classList.toggle('basic', basic);
   let desk = null;
   let showing = null;
   let hideTimer = 0;
   let origin = '/engineering'; // the portfolio a case study was opened from
   const scrollMemory = new Map(); // column positions, so returning keeps your place
 
+  // In the basic site, the front page takes the place of the desk.
+  const pageFor = (path) => (basic && path === '/' ? LANDING : resolvePage(path, origin));
+
   function rememberScroll() {
-    if (PAGES[showing]) {
-      scrollMemory.set(showing, [...pageElement.querySelectorAll('section')].map((column) => column.scrollTop));
+    if (PAGES[showing] || showing === '/') {
+      scrollMemory.set(showing, {
+        page: pageElement.scrollTop,
+        columns: [...pageElement.querySelectorAll('section')].map((column) => column.scrollTop),
+      });
     }
   }
 
@@ -51,14 +61,18 @@ export function createNavigation(pageElement) {
     rememberScroll();
     pageElement.classList.remove('leaving');
     if (PAGES[path]) origin = path;
-    pageElement.classList.toggle('case', Boolean(resolvePage(path, origin).caseStudy));
+    pageElement.classList.toggle('case', Boolean(pageFor(path).caseStudy));
     pageElement.innerHTML = pageHTML(path, origin);
     pageElement.hidden = false;
-    pageElement.scrollTop = 0;
-    scrollMemory.get(path)?.forEach((top, i) => { pageElement.querySelectorAll('section')[i].scrollTop = top; });
-    staggerCopy(pageElement, revealStart);
+    const remembered = scrollMemory.get(path);
+    pageElement.scrollTop = remembered?.page ?? 0;
+    remembered?.columns.forEach((top, i) => {
+      const column = pageElement.querySelectorAll('section')[i];
+      if (column) column.scrollTop = top;
+    });
+    staggerCopy(pageElement, revealStart, basic);
     showing = path;
-    document.title = resolvePage(path, origin).label;
+    document.title = pageFor(path).label;
   }
 
   // Columns fade away first, then the camera pulls back from the blank screen.
@@ -66,7 +80,7 @@ export function createNavigation(pageElement) {
     rememberScroll();
     pageElement.classList.add('leaving');
     showing = null;
-    document.title = 'Desk scene review';
+    document.title = LANDING.label;
     hideTimer = setTimeout(() => {
       pageElement.hidden = true;
       pageElement.classList.remove('leaving');
@@ -75,7 +89,11 @@ export function createNavigation(pageElement) {
   }
 
   function route(path) {
-    const page = resolvePage(path, origin);
+    if (basic) {
+      showPage(pageFor(path) ? path : '/');
+      return;
+    }
+    const page = pageFor(path);
     if (page) {
       if (showing || !desk) {
         showPage(path);
@@ -139,14 +157,32 @@ export function createNavigation(pageElement) {
   });
 
   const start = location.pathname;
-  if (resolvePage(start)) showPage(start);
+  if (pageFor(start)) showPage(start);
+  else if (basic) showPage('/');
 
   return {
     go,
+    get basic() { return basic; },
+    setBasic(value) {
+      if (value === basic) return;
+      basic = value;
+      document.body.classList.toggle('basic', basic);
+      const path = location.pathname;
+      if (basic || pageFor(path)) {
+        showPage(pageFor(path) ? path : '/');
+        if (!basic) desk?.parkAt(pageFor(path));
+      } else {
+        clearTimeout(hideTimer);
+        pageElement.hidden = true;
+        showing = null;
+        document.title = LANDING.label;
+        desk?.flyHome();
+      }
+    },
     attachDesk(attached) {
       desk = attached;
-      if (showing) desk.parkAt(resolvePage(showing, origin));
+      if (showing && showing !== '/') desk.parkAt(pageFor(showing));
     },
-    get onPage() { return Boolean(resolvePage(location.pathname)); },
+    get onPage() { return Boolean(pageFor(location.pathname)); },
   };
 }

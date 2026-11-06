@@ -4,6 +4,7 @@
 export const PROFILE = {
   about: {
     '/engineering': 'Creative technologist and tech lead who builds the systems behind expressive digital products. For more than a decade I have moved between code and design, leading small teams from prototype to production across real-time graphics, design tools and AI-assisted workflows.',
+    '/': 'Creative technologist and tech lead working across design and engineering. For more than a decade I have built expressive digital products, from real-time graphics and design tools to brands and AI-assisted workflows.',
     '/design': 'Creative technologist and tech lead who designs with code. For more than a decade I have shaped brands, interfaces and motion systems, using prototypes as my main design material and staying close to engineering through to launch.',
   },
   experience: [
@@ -12,6 +13,12 @@ export const PROFILE = {
     { role: 'Interaction Designer and Developer', company: 'Northwise Interactive', years: '2013 to 2017' },
   ],
   skills: {
+    '/': [
+      { group: 'Engineering', items: 'TypeScript, Python, React, three.js, WebGPU' },
+      { group: 'Design', items: 'Product, interaction, brand, type and motion' },
+      { group: 'Tools', items: 'Figma, Blender, TouchDesigner, Rive, Claude' },
+      { group: 'Leadership', items: 'Technical and creative direction, mentoring' },
+    ],
     '/engineering': [
       { group: 'Languages', items: 'TypeScript, Python, GLSL, Swift' },
       { group: 'Graphics', items: 'three.js, WebGL, WebGPU, Blender' },
