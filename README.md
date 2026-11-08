@@ -1,9 +1,10 @@
 # Desk scene
 
-An interactive 3D desk for a portfolio site, modeled from scratch.
+An interactive 3D desk, modeled from scratch in Blender and drawn in the browser with three.js.
 
 - `blender/build_desk.py` builds the scene and runs `blender/build_dog.py` for the dog. Run `blender/export_desk.py` inside Blender to rebuild it, save the `.blend` and write the staged models to `web/public/models/`: `room.glb`, `desk.glb` and `details.glb`.
-- `web/` is the Vite and three.js viewer: `npm install`, then `npm run dev` (port 5180). Add `?palette=<period>` (predawn, sunrise, morning, afternoon, sunset, night) to pick a time of day.
-- `web/public/posters/` holds the empty-room stills shown while the scene loads, one per period.
+- `web/` is the Vite viewer: `npm install`, then `npm run dev` (port 5180).
 
-This is a snapshot of the scene from the portfolio site (`portfolio-redesign-2024`, branch `2027-update`, commit 35c8ca8), where work continues. The site's own content (work-page media, favicons, share image, redirects) isn't included, so images on the work pages won't load here.
+The time of day follows the real sun in San Francisco. The picker in the corner switches periods, `?palette=<period>` (predawn, sunrise, morning, afternoon, sunset, night) starts on one, and `?clean` hides the picker. `web/public/posters/` holds the empty-room stills shown while the scene loads, one per period.
+
+Things to try: hover the dog, sweep the cursor over the pencils, plant, keyboard and chair, drag the pen to write on the loose sheet, and click the lamp.

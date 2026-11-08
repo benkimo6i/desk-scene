@@ -1,4 +1,4 @@
-"""Builds the portfolio desk scene. Rerunnable: replaces the DeskScene collection.
+"""Builds the desk scene. Rerunnable: replaces the DeskScene collection.
 
 Run inside Blender:
     exec(compile(open(PATH).read(), PATH, "exec"), {"__name__": "__main__"})

@@ -1,4 +1,4 @@
-// Review viewer. Rebuilds the Blender preview look in real time:
+// The desk scene. Rebuilds the Blender preview look in real time:
 // two sun lights with the same strengths as Blender, a three-step colour ramp,
 // and a screen-space pass for ink lines.
 import * as THREE from 'three';
@@ -9,11 +9,8 @@ import { CITY_LAYER, createCityLights } from './skylines/cityLights.js';
 import { GRAIN_FINISH, GRAIN_GLSL, createSky, hazeMaterial, setHaze } from './skylines/atmosphere.js';
 import { createDogHover } from './dogHover.js';
 import { createHover } from './hover.js';
-import { createFlight, createPhoneLift, createPicker, liftedCenter, measureScreen } from './flight.js';
-import { createPhoneCard, createScreenCard } from './screenCard.js';
-import { createHoverPieces } from './hoverPieces.js';
-import { PAGES } from './pages.js';
-import { LAMP, PALETTES, initialPalette, setPageColors } from './palettes.js';
+import { createPicker } from './picker.js';
+import { LAMP, PALETTES, initialPalette, setBackground } from './palettes.js';
 import { createDeskToys } from './deskToys.js';
 import { createPenDrawing } from './penDrawing.js';
 
@@ -116,8 +113,7 @@ const newTones = () => ({
   uRim: { value: 0 },
   uRimColor: rimColor,
 });
-const TONES = Object.fromEntries([...Object.keys(PALETTES.afternoon.materials), 'M_Panel', 'M_Stage'].map((k) => [k, newTones()]));
-const pieceColors = {}; // shared with the hover pieces' canvases
+const TONES = Object.fromEntries(Object.keys(PALETTES.afternoon.materials).map((k) => [k, newTones()]));
 const MATERIALS = Object.fromEntries(Object.entries(TONES).map(([k, v]) => [k, toonMaterial(v)]));
 const chairMaterial = (name) => toonMaterial({ ...TONES[name], uRim: rimOn });
 const CHAIR = { M_Main: chairMaterial('M_Main'), M_Dark: chairMaterial('M_Dark') };
@@ -297,7 +293,7 @@ const mouse = new THREE.Vector2();
 const eased = new THREE.Vector2();
 
 // As the window narrows, the camera turns toward the desk's center, keeping the monitor,
-// laptop, phone and the phone's lift path in frame.
+// laptop, phone and mug in frame.
 const DESK_CENTER = new THREE.Vector3(0, 0.8, 0);
 const FIT_EDGE = 0.92; // leaves room for the cursor drift
 const frameAim = new THREE.Vector3();
@@ -311,12 +307,26 @@ function fits() {
   return fitPoints.every((point) => Math.abs(fitCheck.copy(point).project(camera).x) < FIT_EDGE);
 }
 
+// Narrow and portrait windows (phones) can't fit the desk by turning alone, so the lens widens
+// too, as little as it takes, with the camera aimed at the desk's center.
+const MAX_FOV = 100;
+let baseFov = 0;
 function frameDesk() {
+  baseFov ||= camera.fov;
+  if (camera.fov !== baseFov) {
+    camera.fov = baseFov;
+    camera.updateProjectionMatrix();
+  }
   for (let turn = 0; turn <= 1; turn += 0.02) {
     frameAim.lerpVectors(homeAim, DESK_CENTER, turn);
     if (fits()) return turn;
   }
-  return null; // doesn't fit at this shape
+  frameAim.copy(DESK_CENTER);
+  while (!fits() && camera.fov < MAX_FOV) {
+    camera.fov = Math.min(camera.fov + 1, MAX_FOV);
+    camera.updateProjectionMatrix();
+  }
+  return 1;
 }
 
 function resize(w = innerWidth, h = innerHeight) {
@@ -349,23 +359,17 @@ let dogBlockers = []; // the chair sits between the camera and part of the bed
 let pointerMoved = false;
 const dogRay = new THREE.Raycaster();
 const LAMP_TARGET = { lamp: true };
-const CLOSE_NEAR = 0.01; // the phone needs the camera right up against it
-let baseNear = 0.1;
+let deskReady = false; // the big pieces have landed and respond to the cursor
 let hover = null;
 let toys = null;
 let pen = null;
-let phoneLift = null;
-let flight = null;
 let pick = null;
 let hovered = null;
 let pointer = null;
 let lastFrame = performance.now();
-const cards = new Map(); // page -> { card, pieces, hover }
-const clock = { time: 0 };
 
 let shadowsDirty = true;
-const isRoomMoving = () => hover?.moving || toys?.moving || pen?.moving || flight?.state.lift % 1 > 0
-  || [...cards.values()].some(({ pieces }) => pieces.group.visible);
+const isRoomMoving = () => hover?.moving || toys?.moving || pen?.moving;
 
 function requestFrames() {
   lastFrame = performance.now();
@@ -373,35 +377,13 @@ function requestFrames() {
 }
 
 function isOverDog() {
-  if (!pointer || !dogHover.kind || !flight.atDesk) return false;
+  if (!pointer || !dogHover.kind) return false;
   dogRay.setFromCamera({ x: (pointer.x / innerWidth) * 2 - 1, y: 1 - (pointer.y / innerHeight) * 2 }, camera);
   return dogRay.intersectObjects([dogMesh, ...dogBlockers], false)[0]?.object === dogMesh;
 }
 
 function updatePointerTarget() {
-  if (flight.atDesk && pointer && !pen?.dragging) {
-    const target = pick(camera, pointer.x, pointer.y);
-    if (target !== hovered) {
-      hovered = target;
-      renderer.domElement.style.cursor = hovered ? 'pointer' : '';
-    }
-  } else if (hovered) {
-    hovered = null;
-    renderer.domElement.style.cursor = '';
-  }
-  pointer = flight.atDesk ? pointer : null;
-}
-
-function updateScreens(elapsed) {
-  const dt = Math.min(elapsed, 0.05);
-  clock.time += dt;
-  const { fade, screen } = flight.state;
-  for (const [page, entry] of cards) {
-    const active = page === hovered;
-    entry.hover = THREE.MathUtils.clamp(entry.hover + (active ? dt / 0.16 : -dt / 0.2), 0, 1);
-    entry.card.draw(entry.hover, page.screen === screen ? fade : 0);
-    entry.pieces.update(dt, clock.time, active && !reduceMotion.matches);
-  }
+  hovered = pointer && !pen?.dragging ? pick(camera, pointer.x, pointer.y) : null;
 }
 
 // The dog holds one sleeping position per period, switched with the rest of the palette.
@@ -436,7 +418,7 @@ function render(now) {
   const elapsed = Math.max(now - lastFrame, 0) / 1000;
   lastFrame = now;
   updateFade(now);
-  if (!flight) { // only the room so far
+  if (!deskReady) { // only the room so far
     eased.lerp(mouse, 0.06);
     camera.position.copy(home).add(new THREE.Vector3(eased.x * 0.09, -eased.y * 0.05, 0));
     camera.lookAt(frameAim);
@@ -452,33 +434,23 @@ function render(now) {
     if (dogHover.update(now)) shadowsDirty = true;
   }
   dogBreath.value = reduceMotion.matches ? 0 : BREATH_DEPTH * (0.5 + 0.5 * Math.sin(now / 1000 * Math.PI * 2 / BREATH_SECONDS)) + (dogHover?.sigh(now) ?? 0);
-  if (flight.atDesk && !pen?.dragging) eased.lerp(mouse, 0.06); // the view holds still while writing
+  if (!pen?.dragging) eased.lerp(mouse, 0.06); // the view holds still while writing
   camera.position.copy(home).add(new THREE.Vector3(eased.x * 0.09, -eased.y * 0.05, 0));
   camera.lookAt(frameAim);
-  flight.update(camera, elapsed);
-  phoneLift?.apply(flight.state.lifts ? flight.state.lift : 0);
-  const near = flight.state.t > 0.5 ? CLOSE_NEAR : baseNear;
-  if (camera.near !== near) {
-    camera.near = near;
-    camera.updateProjectionMatrix();
-    post.uniforms.uNear.value = near;
-  }
   camera.updateMatrixWorld();
-  const free = flight.atDesk && !pen?.dragging;
+  const free = !pen?.dragging;
   toys?.update(camera, elapsed, pointer, free);
   hover?.update(camera, elapsed, free);
-  pen?.update(elapsed, pointer, flight.atDesk);
+  pen?.update(elapsed, pointer, true);
   updatePointerTarget();
   if (pen?.dragging) renderer.domElement.style.cursor = 'grabbing';
   else if (pen?.over) renderer.domElement.style.cursor = 'grab';
   else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
-  updateScreens(elapsed);
   driftClouds(elapsed);
   renderer.shadowMap.needsUpdate = shadowsDirty || isRoomMoving();
   if (import.meta.env.DEV && window.__desk && renderer.shadowMap.needsUpdate) window.__desk.shadowRedraws += 1;
   shadowsDirty = false;
   drawFrame(null);
-  if (flight.state.t === 1 && !flight.state.direction) renderer.setAnimationLoop(null);
 }
 
 // Color, then normals and ids for the ink lines, then the composite into target (null is the screen).
@@ -561,30 +533,7 @@ function applyPalette(name) {
   SCREEN.color.set(p.screen);
   post.uniforms.uInk.value.set(p.line);
   applySkyline(p);
-  const { paper, ink } = p;
-  // Hover panels stay light even in shadow, so their contents remain readable.
-  const paperColor = new THREE.Color(paper), inkColor = new THREE.Color(ink);
-  TONES.M_Panel.uLit.value.copy(paperColor);
-  TONES.M_Panel.uShadow.value.copy(paperColor).lerp(inkColor, 0.12);
-  TONES.M_Panel.uDeep.value.copy(paperColor).lerp(inkColor, 0.18);
-  // Dark panels sit on a dark room, so in lamp-lit periods they use one flat, lighter blue.
-  const lampPanel = p.lamp ? new THREE.Color(p.materials.M_Main[1]).lerp(new THREE.Color(p.materials.M_Main[0]), 0.14) : null;
-  if (lampPanel) for (const tone of ['uLit', 'uShadow', 'uDeep']) TONES.M_Panel[tone].value.copy(lampPanel);
-  ['uLit', 'uShadow', 'uDeep'].forEach((tone, i) => {
-    TONES.M_Stage[tone].value.set(p.materials.M_Dark[i]);
-    if (lampPanel) TONES.M_Stage[tone].value.copy(lampPanel);
-  });
-  const css = (color) => `#${color.getHexString()}`;
-  Object.assign(pieceColors, {
-    paper, ink, accent: p.materials.M_Accent[0],
-    muted: css(paperColor.clone().lerp(inkColor, 0.45)),
-    soft: p.materials.M_Paper[0],
-    onDark: p.materials.M_Main[0], // for text on dark panels, in every period
-    sky: p.sky, cloud: p.cloud, skyline: p.skyline[0], skylineMid: p.skyline[1], // the design palettes
-    stage: css(TONES.M_Stage.uLit.value), // behind the design stage's art
-  });
-  setPageColors(name);
-  for (const { card } of cards.values()) card.setColors(paper, ink, p.materials.M_Main[0], p.materials.M_Dark[2]);
+  setBackground(name);
 }
 
 // The skyline is flat layers well outside the window. Layers sit at different distances
@@ -690,8 +639,6 @@ function reviewPanel(state) {
   document.body.append(panel);
 }
 
-let navigation = null;
-
 // The scene arrives in stages, each fading in when it lands: the room, then the big pieces
 // (which can be clicked from then on), then the small items and the dog, then the skyline.
 // Everything joins one group, so lookups by name span the whole desk.
@@ -756,17 +703,15 @@ function showRoom(gltf) {
   homeAim.copy(home).addScaledVector(forward, home.distanceTo(new THREE.Vector3(0, 0.8, 0)));
   camera.far = 220; // far enough for the skyline layers
   camera.layers.enable(CITY_LAYER);
-  baseNear = camera.near;
   post.uniforms.uNear.value = camera.near;
   post.uniforms.uFar.value = camera.far;
   // The framing points come with the room, measured in Blender (export_desk.py), so the
   // camera is already aimed right before the desk arrives.
-  const { fitBoxes, phoneScreen } = src.userData;
+  const { fitBoxes } = src.userData;
   for (let i = 0; i < fitBoxes.length; i += 6) {
     const [x0, y0, z0, x1, y1, z1] = fitBoxes.slice(i, i + 6);
     for (const x of [x0, x1]) for (const z of [z0, z1]) fitPoints.push(new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y1, z));
   }
-  fitPoints.push(liftedCenter(new THREE.Vector3(...phoneScreen), home));
   resize();
   paletteName = initialPalette();
   applyPalette(paletteName);
@@ -774,8 +719,8 @@ function showRoom(gltf) {
   // still (posters/, made with capturePoster below), which it matches.
   drawFrame(null);
   renderer.domElement.classList.add('shown');
-  if (import.meta.env.DEV && !params.has('clean')) reviewPanel({ palette: paletteName });
-  if (!navigation.onPage && !navigation.basic) requestFrames();
+  if (!params.has('clean')) reviewPanel({ palette: paletteName }); // ?clean hides the time-of-day picker
+  requestFrames();
 }
 
 function showDesk(gltf) {
@@ -788,40 +733,22 @@ function showDesk(gltf) {
   lampLight.target.updateMatrixWorld();
   lampPlaced = true;
 
-  const measured = {};
   const pickable = { Lamp: LAMP_TARGET };
-  for (const page of Object.values(PAGES)) {
-    const mesh = desk.getObjectByName(page.screen);
-    const screen = measureScreen(mesh, page.flat);
-    measured[page.screen] = screen;
-    if (page.flat) {
-      phoneLift = createPhoneLift(desk.getObjectByName(page.object), screen, home);
-      measured[page.screen] = phoneLift.screen;
-    }
-    const card = page.flat ? createPhoneCard(mesh) : createScreenCard(mesh, page.label, screen.width / screen.height);
-    const facing = page.flat ? { center: screen.center, up: new THREE.Vector3(0, 1, 0), normal: new THREE.Vector3(0.25, 0, 0.97).normalize() } : screen;
-    const pieces = createHoverPieces(page.pieces, facing, MATERIALS, tagForOutlines, pieceColors);
-    scene.add(pieces.group);
-    cards.set(page, { card, pieces, hover: 0 });
-    pickable[page.object] = page;
-  }
-  if (import.meta.env.DEV) checkFitPoints(measured.Phone_Screen.center);
-  flight = createFlight(measured, { requestFrames, reduceMotion });
+  if (import.meta.env.DEV) checkFitPoints();
   toys = createDeskToys(desk);
-  pick = createPicker([desk], pickable); // only the objects respond, never their hover panels
-  applyPalette(paletteName); // colors the screens, and lights the lamp if this period has it on
-  navigation.attachDesk(flight);
-  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, get hover() { return hover; }, flight, navigation, toys, get pen() { return pen; }, frameDesk, get lampOn() { return lampOn; }, get dogHover() { return dogHover; } };
+  pick = createPicker([desk], pickable);
+  applyPalette(paletteName); // lights the lamp if this period has it on
+  deskReady = true;
+  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, get hover() { return hover; }, toys, get pen() { return pen; }, frameDesk, get lampOn() { return lampOn; }, get dogHover() { return dogHover; } };
 }
 
 // The baked framing points must match what the loaded desk measures, or the export is stale.
-function checkFitPoints(phoneCenter) {
+function checkFitPoints() {
   const live = [];
   for (const name of ['Laptop', 'Monitor_Panel', 'Phone', 'Mug']) {
     const box = new THREE.Box3().setFromObject(desk.getObjectByName(name));
     for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) live.push(new THREE.Vector3(x, box.min.y, z), new THREE.Vector3(x, box.max.y, z));
   }
-  live.push(phoneCenter);
   const off = Math.max(...live.map((point, i) => point.distanceTo(fitPoints[i])));
   if (off > 1e-4) console.warn(`Framing points are ${off.toFixed(4)} m off; rerun export_desk.py`);
 }
@@ -847,22 +774,10 @@ async function showSkyline() {
 }
 
 renderer.domElement.addEventListener('click', (e) => {
-  if (!flight?.atDesk || pen?.takeClick()) return;
-  const target = pick(camera, e.clientX, e.clientY);
-  if (target === LAMP_TARGET) setLamp(!lampOn);
-  else if (target) navigation.go(Object.keys(PAGES).find((path) => PAGES[path] === target));
+  if (!deskReady || pen?.takeClick()) return;
+  if (pick(camera, e.clientX, e.clientY) === LAMP_TARGET) setLamp(!lampOn);
 });
 addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; pointerMoved = true; });
-// Scrolling over the laptop takes over its timeline.
-addEventListener('wheel', (e) => {
-  if (!e.ctrlKey && hovered) cards.get(hovered)?.pieces.scrub(e.deltaY + e.deltaX);
-}, { passive: true });
-
-export function setDeskActive(active) {
-  if (!fitPoints.length) return; // nothing to draw yet
-  if (active) requestFrames();
-  else renderer.setAnimationLoop(null);
-}
 
 // Development only: the room as the still behind the canvas, with the camera at rest.
 // Open /?clean&stages=room&palette=<period>, then call __capturePoster().
@@ -888,8 +803,7 @@ if (import.meta.env.DEV) {
 }
 
 // roomFile is already downloading when entry.js fetched it alongside this module.
-export function startDesk(nav, roomFile = fetchModel('room')) {
-  navigation = nav;
+export function startDesk(roomFile = fetchModel('room')) {
   const deskFile = fetchModel('desk');
   const detailsFile = fetchModel('details');
   (async () => {

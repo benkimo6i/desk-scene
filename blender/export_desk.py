@@ -52,9 +52,6 @@ def three_box(obj):
 # The camera frames itself around these before the desk has loaded (see frameDesk in main.js).
 cam = bpy.data.objects["Cam_Hero"]
 cam["fitBoxes"] = [v for name in ("Laptop", "Monitor_Panel", "Phone", "Mug") for v in three_box(bpy.data.objects[name])]
-screen = bpy.data.objects["Phone_Screen"]
-center = sum((screen.matrix_world @ v.co for v in screen.data.vertices), Vector()) / len(screen.data.vertices)
-cam["phoneScreen"] = list(to_three(center))
 
 roots = [o for o in bpy.context.scene.objects if o.parent is None]
 logging.disable(logging.INFO)

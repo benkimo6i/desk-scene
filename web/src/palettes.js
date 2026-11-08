@@ -1,6 +1,6 @@
 // The six time-of-day periods. Their colors, sun and lamp live in palettes.json, which
 // the Blender build reads too. Every visitor sees the studio's sky in San Francisco.
-// No three.js here, so pages can use this before the 3D code loads.
+// No three.js here, so entry.js can use this before the 3D code loads.
 import PALETTES from './palettes.json';
 
 export { PALETTES };
@@ -45,14 +45,13 @@ export function periodAt(now = new Date()) {
   return 'night';
 }
 
+// ?palette=<period> picks a period; otherwise it follows the sun.
 export function initialPalette() {
-  // The ?palette= preview only exists in development.
-  const requested = import.meta.env.DEV ? new URLSearchParams(location.search).get('palette') : null;
+  const requested = new URLSearchParams(location.search).get('palette');
   return PALETTES[requested] ? requested : periodAt();
 }
 
-export function setPageColors(name) {
-  const { style } = document.documentElement;
-  style.setProperty('--paper', PALETTES[name].paper);
-  style.setProperty('--ink', PALETTES[name].ink);
+// The page behind the canvas, seen until the room has drawn.
+export function setBackground(name) {
+  document.documentElement.style.setProperty('--ink', PALETTES[name].ink);
 }
