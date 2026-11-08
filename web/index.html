@@ -3,11 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Benjamin Kim</title>
+    <title>Benjamin Kim | Creative Technologist</title>
     <style>
       :root { --paper: #EFE6D2; --ink: #0B4C92; --tile: color-mix(in srgb, var(--ink) 14%, var(--paper)); }
       html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; }
-      canvas { display: block; width: 100vw; height: 100vh; }
+      canvas { position: relative; display: block; width: 100vw; height: 100vh; opacity: 0; transition: opacity 300ms linear; }
+      canvas.shown { opacity: 1; }
+      /* A still of the empty room shows until the 3D room has drawn. It lines up only where the camera
+         never turns (16:10 and wider) and up to the still's own width (2.4:1). */
+      #poster { position: fixed; inset: 0; background: center / auto 100% no-repeat; }
+      @media (min-aspect-ratio: 8/5) and (max-aspect-ratio: 12/5) { #poster { background-image: var(--poster); } }
       #review { position: fixed; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
         max-width: calc(100vw - 48px); padding: 8px 10px; border-radius: 8px; background: #fffd; color: #123;
         font: 12px/1.2 system-ui, sans-serif; }
@@ -26,8 +31,9 @@
       #page.leaving .reveal { opacity: 0; transition: opacity 180ms linear; animation: none; }
       @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
       @media (prefers-reduced-motion: reduce) { #page .reveal { animation-delay: 0ms; } }
-      #page[hidden] { display: none; }
-      /* 12-column grid: background 6, resume + portfolio 6. */
+      /* Page modes below set their own display, so hidden has to win over all of them. */
+      #page[hidden] { display: none !important; }
+      /* 12-column grid: background 6, portfolio 6. */
       #page { --columns: 6fr 6fr; --pad: 20px; }
       #page a { color: inherit; text-decoration: none; }
       #page a:hover, #page a:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
@@ -43,6 +49,8 @@
       #page .block { margin-bottom: 28px; padding-top: 8px; border-top: 1px solid currentColor; }
       #page h3 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
       #page p { margin: 0; max-width: 46ch; }
+      #page p, #page figcaption { text-wrap: pretty; }
+      #page h1, #page h2, #page h3 { text-wrap: balance; }
       #page .about { max-width: 52ch; margin-bottom: 14px; font-size: 19px; line-height: 1.3; }
       #page section > .cta { display: inline-flex; margin: 0 0 40px; }
       #page section > h2:not(:first-child) { margin-top: 40px; }
@@ -51,23 +59,49 @@
       #page .entry h3 { margin: 0; }
       #page .entry p { margin: 0; }
       #page .entry p:last-child:not(:nth-child(2)) { justify-self: end; white-space: nowrap; }
+      body:not(.basic) #page .entry p:last-child:nth-child(2) { grid-column: 2 / -1; }
       #page .project .image { display: block; aspect-ratio: 16 / 9; margin-bottom: 10px; background: var(--tile); transition: background 160ms linear; }
       #page a.image:hover { background: color-mix(in srgb, var(--ink) 24%, var(--paper)); }
       /* Case study: the header stays the same, and the whole page scrolls as one column. */
       #page.case { display: block; overflow-y: auto; scrollbar-width: thin; scrollbar-color: currentColor transparent; }
       #page.case main { display: block; padding-bottom: 20px; }
       #page .media { aspect-ratio: 16 / 9; margin: 20px var(--pad); background: var(--tile); }
+      #page .media img, #page .media video, #page .project .image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      #page .project .image img { transition: opacity 160ms linear; }
+      #page a.image:hover img { opacity: 0.86; }
+      #page .chat { display: grid; grid-template-columns: 6fr 6fr; margin: 20px 0; padding: 12px 0 28px; border-top: 1px solid currentColor; }
+      #page .chat > * { padding: 0 var(--pad); }
+      #page .chat figcaption { grid-row: span 2; font-weight: 600; }
+      #page .chat h3 { margin: 0 0 4px; }
+      #page .chat div + div { margin-top: 16px; }
+      body.basic #page .chat { grid-template-columns: 1fr; gap: 12px; }
+      #page .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pad); margin: 20px var(--pad) 28px; }
+      #page .pair .media { margin: 0; }
+      #page .pair .contain img { object-fit: contain; padding: 12px; box-sizing: border-box; }
+      #page .pair figcaption { grid-column: 1 / -1; }
+      #page .pair a { text-decoration: underline; text-underline-offset: 2px; }
+      #page .board { margin: 20px 0; padding: 12px var(--pad) 28px; border-top: 1px solid currentColor; }
+      #page .board figcaption { margin-bottom: 16px; font-weight: 600; }
+      #page .board > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px var(--pad); }
+      #page .sketch { aspect-ratio: 16 / 9; margin-bottom: 10px; background: currentColor; -webkit-mask: var(--sketch) center / 100% 100% no-repeat; mask: var(--sketch) center / 100% 100% no-repeat; }
+      #page .board h3 { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 4px; }
+      #page .board h3 span { font-weight: 400; }
+      body.basic #page .pair { grid-template-columns: 1fr; margin: 16px var(--pad); gap: 12px; }
+      body.basic #page .board > div { grid-template-columns: 1fr 1fr; gap: 20px 12px; }
+      #page .out { display: flex; flex-wrap: wrap; gap: 0 20px; }
+      #page .credits p + p { margin-top: 4px; }
+      #page .credits a { text-decoration: underline; text-underline-offset: 2px; }
       #page .row { display: grid; grid-template-columns: 6fr 6fr; padding: 16px 0 44px; }
       #page .row > * { padding: 0 var(--pad); }
       #page .row h2 { margin-bottom: 12px; }
       #page .details { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pad); }
       #page .pager { padding-top: 16px; border-top: 1px solid currentColor; font-weight: 600; }
-      .tile-clone { position: fixed; z-index: 25; background: var(--tile); }
+      .tile-clone { position: fixed; z-index: 25; background: var(--tile) center / cover no-repeat; }
       #page .cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-weight: 600; }
       #page .arrow { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; transition: transform 160ms ease-out; }
       #page .cta:hover .arrow { transform: translate(2px, -2px); }
       /* Basic site: no desk, and every page is one scrolling column. */
-      body.basic canvas { display: none; }
+      body.basic canvas, body.basic #poster { display: none; }
       body.basic { background: var(--paper); }
       body.basic #page { display: block; overflow-y: auto; --pad: 16px; --columns: 1fr 1fr; }
       body.basic #page h1 { font-size: clamp(40px, 13.5vw, 96px); margin-top: 24px; }
@@ -90,6 +124,7 @@
     </style>
   </head>
   <body>
+    <div id="poster" aria-hidden="true"></div>
     <nav id="skip" aria-label="Portfolios">
       <a href="/engineering" data-link>Engineering portfolio</a>
       <a href="/design" data-link>Design portfolio</a>

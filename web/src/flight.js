@@ -120,14 +120,20 @@ export function createFlight(screens, { requestFrames, reduceMotion }) {
   };
 }
 
+// Where a flat screen's center ends up once lifted toward the eye.
+export function liftedCenter(center, eye) {
+  const lifted = center.clone().lerp(eye, LIFT_TOWARD_CAMERA);
+  lifted.y += LIFT_RAISE;
+  return lifted;
+}
+
 // Floats a flat object up to face the camera, so the push runs straight in with no tip or roll.
 export function createPhoneLift(phone, screen, eye) {
   phone.updateWorldMatrix(true, true);
   const restPosition = phone.position.clone();
   const restQuaternion = phone.quaternion.clone();
   const localCenter = phone.worldToLocal(screen.center.clone());
-  const center = screen.center.clone().lerp(eye, LIFT_TOWARD_CAMERA);
-  center.y += LIFT_RAISE;
+  const center = liftedCenter(screen.center, eye);
   const normal = eye.clone().sub(center).normalize();
   const worldUp = new THREE.Vector3(0, 1, 0);
   const up = worldUp.clone().addScaledVector(normal, -worldUp.dot(normal)).normalize();

@@ -15,9 +15,14 @@ const navigation = createNavigation(document.querySelector('#page'), !deskQuery.
 
 let desk = null;
 const loadDesk = () => {
+  // The room downloads alongside the 3D code rather than after it, so it can show first.
+  const roomFile = desk ? null : fetch(`${import.meta.env.BASE_URL}models/room.glb`).then((response) => {
+    if (!response.ok) throw new Error(`room.glb: HTTP ${response.status}`);
+    return response.arrayBuffer();
+  });
   desk ??= import('./main.js')
     .then((module) => {
-      module.startDesk(navigation);
+      module.startDesk(navigation, roomFile);
       return module;
     })
     .catch((error) => console.error('The 3D desk could not start', error));
@@ -31,6 +36,8 @@ deskQuery.addEventListener('change', async () => {
 });
 
 if (deskQuery.matches) {
+  // The empty room for this time of day, until the 3D room draws over it.
+  if (!navigation.onPage) document.querySelector('#poster').style.setProperty('--poster', `url(${import.meta.env.BASE_URL}posters/${initialPalette()}.webp)`);
   if (navigation.onPage) (window.requestIdleCallback ?? setTimeout)(loadDesk);
   else loadDesk();
 }

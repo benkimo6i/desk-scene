@@ -35,17 +35,42 @@ function staggerCopy(pageElement, start = 0, basic = false) {
   });
 }
 
+// Silent clips loop while in view. With reduced motion they wait for the visitor to press play.
+let videoObserver = null;
+function wireVideos(pageElement) {
+  videoObserver?.disconnect();
+  const videos = pageElement.querySelectorAll('video');
+  videos.forEach((video) => { video.muted = true; });
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    videos.forEach((video) => { video.controls = true; });
+    return;
+  }
+  videoObserver = new IntersectionObserver((entries) => entries.forEach(({ target, isIntersecting }) => {
+    if (isIntersecting) target.play().catch(() => {});
+    else target.pause();
+  }), { threshold: 0.25 });
+  videos.forEach((video) => videoObserver.observe(video));
+}
+
 export function createNavigation(pageElement, startBasic) {
+  // A trailing slash is the same page, and every route below is written without one.
+  const cleanPath = location.pathname.replace(/\/+$/, '') || '/';
+  if (cleanPath !== location.pathname) history.replaceState(null, '', cleanPath + location.search);
+
   let basic = startBasic;
   document.body.classList.toggle('basic', basic);
   let desk = null;
   let showing = null;
   let hideTimer = 0;
-  let origin = '/engineering'; // the portfolio a case study was opened from
+  // The portfolio a case study was opened from. It picks the version of a shared project,
+  // so it has to survive a reload.
+  let origin = sessionStorage.getItem('origin') ?? '/engineering';
   const scrollMemory = new Map(); // column positions, so returning keeps your place
 
   // In the basic site, the front page takes the place of the desk.
   const pageFor = (path) => (basic && path === '/' ? LANDING : resolvePage(path, origin));
+
+  const setTitle = (page) => { document.title = page.title ?? `${page.label} | Benjamin Kim`; };
 
   function rememberScroll() {
     if (PAGES[showing] || showing === '/') {
@@ -60,7 +85,10 @@ export function createNavigation(pageElement, startBasic) {
     clearTimeout(hideTimer);
     rememberScroll();
     pageElement.classList.remove('leaving');
-    if (PAGES[path]) origin = path;
+    if (PAGES[path]) {
+      origin = path;
+      sessionStorage.setItem('origin', origin);
+    }
     pageElement.classList.toggle('case', Boolean(pageFor(path).caseStudy));
     pageElement.innerHTML = pageHTML(path, origin);
     pageElement.hidden = false;
@@ -71,8 +99,9 @@ export function createNavigation(pageElement, startBasic) {
       if (column) column.scrollTop = top;
     });
     staggerCopy(pageElement, revealStart, basic);
+    wireVideos(pageElement);
     showing = path;
-    document.title = pageFor(path).label;
+    setTitle(pageFor(path));
   }
 
   // Columns fade away first, then the camera pulls back from the blank screen.
@@ -80,7 +109,7 @@ export function createNavigation(pageElement, startBasic) {
     rememberScroll();
     pageElement.classList.add('leaving');
     showing = null;
-    document.title = LANDING.label;
+    setTitle(LANDING);
     hideTimer = setTimeout(() => {
       pageElement.hidden = true;
       pageElement.classList.remove('leaving');
@@ -116,6 +145,7 @@ export function createNavigation(pageElement, startBasic) {
     const from = tile.getBoundingClientRect();
     const clone = document.createElement('div');
     clone.className = 'tile-clone';
+    clone.style.backgroundImage = `url("${tile.querySelector('img').src}")`;
     Object.assign(clone.style, {
       left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`,
     });
@@ -175,7 +205,7 @@ export function createNavigation(pageElement, startBasic) {
         clearTimeout(hideTimer);
         pageElement.hidden = true;
         showing = null;
-        document.title = LANDING.label;
+        setTitle(LANDING);
         desk?.flyHome();
       }
     },

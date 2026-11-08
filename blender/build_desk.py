@@ -18,6 +18,7 @@ DESK_Z = 0.74
 
 # Colors, sun and lamp for each period are shared with the website.
 PALETTES_FILE = "/Users/benkim/Development/desk-scene/web/src/palettes.json"
+DOG_FILE = "/Users/benkim/Development/desk-scene/blender/build_dog.py"
 PERIOD = globals().get("PERIOD", "afternoon")
 with open(PALETTES_FILE) as f:
     P = json.load(f)[PERIOD]
@@ -676,6 +677,8 @@ for i in range(11):
 
 # --- room shell: a hidden ceiling and a longer window wall, so sunlight can only enter
 # through the window. Never visible to the camera, here or on the website.
+exec(compile(open(DOG_FILE).read(), DOG_FILE, "exec"), globals())
+
 use("RoomShell")
 M_SHELL = bpy.data.materials.get("M_Shell") or bpy.data.materials.new("M_Shell")
 for shell_name, shell_geo in (("Shell_Ceiling", box_geo(5.4, 18, 0.2, (0.5, -7.8, 3.1))),
@@ -718,10 +721,15 @@ cam_d = bpy.data.cameras.new("Cam_Hero")
 cam_d.lens = 28
 cam = bpy.data.objects.new("Cam_Hero", cam_d)
 ACTIVE.objects.link(cam)
-cam.location = (0.42, -2.12, 1.66)
-aim = Vector((-0.32, 0.0, 0.84))
+cam.location = (0.32, -2.24, 1.66)
+aim = Vector((-0.46, 0.0, 0.84))
 cam.rotation_euler = (aim - cam.location).to_track_quat("-Z", "Y").to_euler()
 scene.camera = cam
+bpy.context.view_layer.update()
+# From build_dog.py; these need the camera. Fills first: the others measure the reshaped dog.
+pose_fills(bpy.data.objects["Dog"], bpy.data.objects["DogRig"], cam, LIMB_OF)
+sketch_lines(bpy.data.objects["Dog"], bpy.data.objects["DogRig"], cam)
+quiet_regions(bpy.data.objects["Dog"], bpy.data.objects["DogRig"], cam)
 
 # --- world: pale sky for the camera, no ambient on surfaces
 w = scene.world or bpy.data.worlds.new("World")

@@ -3,3 +3,7 @@ dist/
 .DS_Store
 *.blend1
 blender/renders/
+
+# Blender
+*.blend1
+blender/renders/

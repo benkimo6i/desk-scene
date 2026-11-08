@@ -80,3 +80,15 @@ export function blocks(seed, x0, x1, hMin, hMax, wMin = 1.6, wMax = 3.4) {
 }
 
 export const ground = (h) => box(0, 110, h);
+
+// A flat-bottomed cloud with a lumpy top. x and h are its center and base.
+export function cloud(x, h, w, seed = 1) {
+  const top = [];
+  const n = 18;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const lumps = 0.72 + 0.28 * Math.abs(Math.sin(t * 7 + seed * 2.1));
+    top.push([x - w / 2 + w * t, h + 0.16 * w * Math.sin(t * Math.PI) ** 0.7 * lumps]);
+  }
+  return [...top, [x + w * 0.3, h - 0.012 * w], [x - w * 0.3, h - 0.012 * w]];
+}

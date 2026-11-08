@@ -37,9 +37,10 @@ export function createScreenCard(mesh, label, aspect) {
 
     const family = "'Inter Tight Variable', Helvetica, Arial, sans-serif";
     // Label and slanted arrow sit on one line, sized together to fit the width.
-    const arrowShare = 0.72, gapShare = 0.16; // relative to the type size
+    const gapShare = 0.16; // relative to the type size
     context.font = `700 100px ${family}`;
-    const perSize = context.measureText(label).width / 100 + arrowShare + gapShare;
+    const capShare = context.measureText('H').actualBoundingBoxAscent / 100;
+    const perSize = context.measureText(label).width / 100 + capShare + gapShare;
     const size = Math.min(height * 0.34, (width - 2 * margin) / perSize);
     context.font = `700 ${size}px ${family}`;
     context.textBaseline = 'alphabetic';
@@ -47,22 +48,29 @@ export function createScreenCard(mesh, label, aspect) {
     const baseline = height - margin;
     context.fillText(label, margin, baseline);
 
-    // Thin slanted arrow, drawn to sit on the label's line.
-    const box = size * arrowShare;
+    // The arrow is a little smaller than the capitals, hung from the cap height at the right
+    // edge of the space a cap-height square would take.
+    const cap = size * capShare;
+    const square = cap * 0.8;
     const nudge = hover * size * 0.07;
-    const left = margin + context.measureText(label).width + size * gapShare + nudge;
-    const bottom = baseline - nudge;
-    const barb = box * 0.62;
+    const right = margin + context.measureText(label).width + size * gapShare + cap + nudge;
+    const top = baseline - cap - nudge;
+    const left = right - square, bottom = top + square;
+    // Proportions from the copy arrow (pages.js): a 1.5-unit stroke on 5.5-unit arms, so 1.5 of
+    // the 7 units the ink spans, with the shaft cut to the arms' length. The ink fills the square:
+    // the corner sits half a stroke in, and the shaft's slanted cut just touches the edges.
+    const stroke = square * (1.5 / 7);
+    const half = stroke / 2, cut = stroke / (2 * Math.SQRT2);
     context.strokeStyle = context.fillStyle;
-    context.lineWidth = size * 0.08;
+    context.lineWidth = stroke;
     context.lineCap = 'butt';
     context.lineJoin = 'miter';
     context.beginPath();
-    context.moveTo(left, bottom);
-    context.lineTo(left + box, bottom - box);
-    context.moveTo(left + box - barb, bottom - box);
-    context.lineTo(left + box, bottom - box);
-    context.lineTo(left + box, bottom - box + barb);
+    context.moveTo(left + cut, bottom - cut);
+    context.lineTo(right - half, top + half);
+    context.moveTo(left, top + half);
+    context.lineTo(right - half, top + half);
+    context.lineTo(right - half, bottom);
     context.stroke();
     texture.needsUpdate = true;
   }
