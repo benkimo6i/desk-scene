@@ -726,10 +726,6 @@ aim = Vector((-0.46, 0.0, 0.84))
 cam.rotation_euler = (aim - cam.location).to_track_quat("-Z", "Y").to_euler()
 scene.camera = cam
 bpy.context.view_layer.update()
-# From build_dog.py; these need the camera. Fills first: the others measure the reshaped dog.
-pose_fills(bpy.data.objects["Dog"], bpy.data.objects["DogRig"], cam, LIMB_OF)
-sketch_lines(bpy.data.objects["Dog"], bpy.data.objects["DogRig"], cam)
-quiet_regions(bpy.data.objects["Dog"], bpy.data.objects["DogRig"], cam)
 
 # --- world: pale sky for the camera, no ambient on surfaces
 w = scene.world or bpy.data.worlds.new("World")

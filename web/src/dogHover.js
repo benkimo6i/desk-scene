@@ -12,13 +12,14 @@ const THUMP_SECONDS = 0.75;
 const TAIL = [['Tail0', 0], ['Tail1', 0.05], ['Tail2', 0.1]]; // each bone follows the last
 const TAIL_LIFT = degrees(13);
 const PAW_SECONDS = 0.34;
-const PAWS = [['FrontTop2', 0.1], ['FrontLow2', 0.42], ['HindTop1', 0.26], ['HindLow2', 0.58]];
+// The dog lies on its right side, so its left legs are the upper pair.
+const PAWS = [['FrontL2', 0.1], ['FrontR2', 0.42], ['HindL2', 0.26], ['HindR2', 0.58]];
 const PAW_FLEX = degrees(11);
 
 const SIGH_DEPTH = 0.03; // metres, on top of normal breathing
 const SIGH_SECONDS = 3.4;
 
-const EAR = ['EarTop0', 'EarTop1'];
+const EAR = ['EarL0', 'EarL1']; // the upper ear
 const EAR_LIFT = degrees(30);
 const FLICKS = 2, FLICK_SECONDS = 0.22;
 

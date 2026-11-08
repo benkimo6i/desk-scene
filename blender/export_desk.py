@@ -66,9 +66,7 @@ try:
         out = f"{BASE}/web/public/models/{stage}.glb"
         bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", use_visible=False, use_selection=True,
                                   export_cameras=stage == "room", export_lights=False, export_yup=True,
-                                  export_apply=False, export_vertex_color="ACTIVE", export_extras=True,   # camera framing, dog sketch
-                                  export_attributes=True,   # the dog's _sketch_ positions
-                                  export_morph_normal=False)   # a pose's reshape keeps the fur's shading
+                                  export_apply=False, export_vertex_color="ACTIVE", export_extras=True)   # camera framing
         print("GLB_KB", stage, os.path.getsize(out) // 1024)
 finally:
     logging.disable(logging.NOTSET)
