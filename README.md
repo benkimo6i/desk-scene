@@ -7,4 +7,4 @@ An interactive 3D desk, modeled from scratch in Blender and drawn in the browser
 
 The time of day follows the real sun in San Francisco. The picker in the corner switches periods, `?palette=<period>` (predawn, sunrise, morning, afternoon, sunset, night) starts on one, and `?clean` hides the picker. `web/public/posters/` holds the empty-room stills shown while the scene loads, one per period.
 
-Things to try: hover the dog, sweep the cursor over the pencils, plant, keyboard and chair, drag the pen to write on the loose sheet, and click the lamp.
+Things to try: hover the monitor, laptop or phone to light its screen, hover the dog, sweep the cursor over the pencils, plant, keyboard and chair, drag the pen to write on the loose sheet, and click the lamp.

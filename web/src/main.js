@@ -10,6 +10,7 @@ import { GRAIN_FINISH, GRAIN_GLSL, createSky, hazeMaterial, setHaze } from './sk
 import { createDogHover } from './dogHover.js';
 import { createHover } from './hover.js';
 import { createPicker } from './picker.js';
+import { GLOW, GLOW_COUNT, createScreens } from './screens.js';
 import { LAMP, PALETTES, initialPalette, setBackground } from './palettes.js';
 import { createDeskToys } from './deskToys.js';
 import { createPenDrawing } from './penDrawing.js';
@@ -56,7 +57,7 @@ function toonMaterial(tones, marked = false) {
   const m = new THREE.MeshLambertMaterial({ color: '#fff', shadowSide: THREE.DoubleSide });
   if (marked) m.customProgramCacheKey = () => 'marked'; // otherwise it shares the plain program
   m.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, tones);
+    Object.assign(s.uniforms, tones, GLOW);
     if (marked) {
       s.vertexShader = s.vertexShader
         .replace('#include <common>', `#include <common>
@@ -77,6 +78,8 @@ function toonMaterial(tones, marked = false) {
           uniform float uSketch; uniform int uSketchCount; uniform vec2 uSketchLine[${SKETCH_MAX}];` : ''}
         uniform vec3 uLit, uShadow, uDeep, uRimColor;
         uniform float uRim;
+        uniform vec3 uGlowPos[${GLOW_COUNT}], uGlowDir[${GLOW_COUNT}], uGlowLevel, uGlowReach, uGlowColor;
+        uniform float uGlowStrength;
         ${GRAIN_GLSL}`)
       .replace('#include <opaque_fragment>', `
         float rim = (1.0 - abs(dot(normalize(vViewPosition), normal))) * step(0.0, normal.y);
@@ -87,6 +90,19 @@ function toonMaterial(tones, marked = false) {
         vec3 tone = base < 0.10 ? uDeep : (v < 0.30 ? uShadow : uLit);
         ${marked ? 'if (vMark > 0.5) tone = uDark * 0.7;' : ''}
         if (uRim > 0.5 && rim + (n - 0.5) * 0.04 > 0.66) tone = mix(tone, uRimColor, 0.55);
+        // Lit screens (screens.js): strongest in front of each screen and on surfaces facing it,
+        // fading out over its reach. A little reaches the sides, so the flat phone lights the desk.
+        float glow = 0.0;
+        for (int i = 0; i < ${GLOW_COUNT}; i++) {
+          vec3 d = -vViewPosition - uGlowPos[i];
+          float dist = length(d);
+          vec3 dir = d / max(dist, 1e-4);
+          float spread = clamp(0.35 + 0.65 * dot(dir, uGlowDir[i]), 0.0, 1.0);
+          float facing = 0.5 + 0.5 * dot(normal, -dir);
+          float fall = 1.0 - smoothstep(0.0, uGlowReach[i], dist);
+          glow += uGlowLevel[i] * spread * facing * fall;
+        }
+        tone = mix(tone, uGlowColor, min(glow, 1.0) * uGlowStrength);
         outgoingLight = tone * ${GRAIN_FINISH};
         ${marked ? `// A drawn line (the donut's ear). vSketch is where this point of fur sat in the hero
         // camera's view in that pose, so the line stays on the fur. Ink within about a pixel.
@@ -129,7 +145,7 @@ const sketch = {
 };
 let sketchLines = {}; // pose -> flat [u, v, ...], from the Dog's "sketch" property
 const DOG = toonMaterial({ ...TONES.M_Dog, uDark: TONES.M_Dark.uDeep, uBreath: dogBreath, uInk: inkLine, ...sketch }, true);
-const SCREEN = new THREE.MeshBasicMaterial();
+const screens = createScreens();
 const BULB = new THREE.MeshBasicMaterial();
 const lampLight = new THREE.SpotLight('#fff', 0, 0, THREE.MathUtils.degToRad(40), 0, 0); // no falloff, so the pool ends on one clean edge
 lampLight.shadow.mapSize.set(2048, 2048);
@@ -446,6 +462,7 @@ function render(now) {
   if (pen?.dragging) renderer.domElement.style.cursor = 'grabbing';
   else if (pen?.over) renderer.domElement.style.cursor = 'grab';
   else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
+  screens.update(Math.min(elapsed, 0.05), hovered, camera, reduceMotion.matches);
   driftClouds(elapsed);
   renderer.shadowMap.needsUpdate = shadowsDirty || isRoomMoving();
   if (import.meta.env.DEV && window.__desk && renderer.shadowMap.needsUpdate) window.__desk.shadowRedraws += 1;
@@ -530,7 +547,7 @@ function applyPalette(name) {
   setLamp(p.lamp > 0);
   shadowsDirty = true;
   pen?.setInk(p.materials.M_Dark[0]);
-  SCREEN.color.set(p.screen);
+  screens.setColors(p.materials.M_Dark[2], p.screen, p.screenGlow);
   post.uniforms.uInk.value.set(p.line);
   applySkyline(p);
   setBackground(name);
@@ -667,7 +684,7 @@ function dress(root) {
       return;
     }
     if (name === 'M_Screen') {
-      o.material = SCREEN;
+      o.material = screens.materialFor(o.name);
       o.castShadow = true;
       return;
     }
@@ -733,7 +750,8 @@ function showDesk(gltf) {
   lampLight.target.updateMatrixWorld();
   lampPlaced = true;
 
-  const pickable = { Lamp: LAMP_TARGET };
+  screens.place(desk);
+  const pickable = { Lamp: LAMP_TARGET, ...screens.targets() };
   if (import.meta.env.DEV) checkFitPoints();
   toys = createDeskToys(desk);
   pick = createPicker([desk], pickable);
