@@ -28,14 +28,6 @@ SIDE_YAW = -158       # lying on its side across the camera's view, legs toward 
 LIE_ROLL = 80
 LIE = [("Root", LIE_ROLL, "X"), ("Root", SIDE_YAW, "Z")]
 ROUGH = {
-    # Stretched out on its side, legs reaching forward, tail curving up behind. The hind knees
-    # open (HindL1/R1) so each hind leg reaches out nearly straight, as on the old dog.
-    "Stretch": LIE + [
-        ("Neck0", 12), ("Neck1", 8), ("Head0", 4),
-        ("FrontL0", -40), ("FrontL1", 8), ("FrontR0", -52), ("FrontR1", 12), ("FrontR0", -20, "X"),
-        ("HindL0", -42), ("HindL1", -42), ("HindL2", -10), ("HindR0", -32), ("HindR1", -45), ("HindR2", -10),
-        ("HindR0", -20, "X"),
-        ("Tail0", -55), ("Tail1", -15)],
     # On its side, loosely curled: back rounded, head down toward the front paws, hind legs
     # drawn up under the belly.
     "Shrimp": LIE + [
@@ -43,14 +35,6 @@ ROUGH = {
         ("FrontL0", -45), ("FrontL1", 20), ("FrontR0", -55), ("FrontR1", 25),
         ("HindL0", -65), ("HindL1", -20), ("HindR0", -55), ("HindR1", -25),
         ("Tail0", -25)],
-    # Curled in a ball on its side: back rounded, nose round toward the hind legs, legs tucked
-    # toward the belly, tail wrapped forward under the curl.
-    "Donut": LIE + [
-        ("Spine0", 16), ("Spine1", 18), ("Spine2", 18), ("Spine3", 16),
-        ("Neck0", 26), ("Neck1", 16), ("Head0", 8),
-        ("FrontL0", -15), ("FrontL1", 45), ("FrontR0", -25), ("FrontR1", 45), ("FrontR0", -15, "X"),
-        ("HindL0", -40), ("HindL1", 25), ("HindR0", -30), ("HindR1", 25), ("HindR0", -15, "X"),
-        ("Tail0", 35), ("Tail1", 30), ("Tail2", 20)],
 }
 AXES = {"X": (1, 0, 0), "Y": (0, 1, 0), "Z": (0, 0, 1)}
 
