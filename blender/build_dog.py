@@ -15,16 +15,17 @@ BOLSTER = 0.08                      # half thickness
 BED_CORNER = 0.13
 BED_HIGH, BED_LOW = 0.18, 0.07      # all the way round, and at the front dip
 DIP_FLAT, DIP_RAMP = 0.2, 0.12      # half length of the dip's floor, and of its slopes
-DOG_SCALE = 0.7
+DOG_SCALE = 0.665                   # 5% under the old dog, so the side pose clears the chair and shows its tail (2026-11-08)
 DOG_LIFT = 0.045                    # the cushion's top
 # Breathing swells the ribs most, fading out over this size (dog space x and z, standing).
 BREATH_AT, BREATH_SIZE = (0.03, 0.37), (0.2, 0.14)
-# Limbs for the ink lines (see main.js). Lines always fall between two limbs, and between a limb
-# and the body only where one lies over the other. The shader tells the left leg of a pair from
-# the right by the alpha mark: 1 on the left.
-LIMBS = {"FrontL": 1, "FrontR": 1, "HindL": 3, "HindR": 3, "Tail": 5}
-LEFT = ("FrontL", "HindL")
-
+# Joints: skin marked _root draws no ink line against the body (main.js), so a leg or ear
+# joins the body without one. On an ear, the flap from its root down to where it slides out
+# from under the root pad; on a leg, its skin near the body around the shoulder or hip
+# (user, 2026-11-08: no lines where the legs meet the torso, the parts stay separate).
+EAR_ROOT = 0.3 
+JOINT_REACH = 0.02                  # leg skin this close to the body (standing, dog units) ...
+JOINT_UPPER = 0.45                  # ... in this top share of the leg
 
 def bed_geo():
     """A soft bolster ring, one height all the way round, with a low dip facing the camera."""
@@ -78,25 +79,38 @@ def bed_geo():
     return verts, faces
 
 
-def mark_regions(dog, part_of, parts, main_bone):
-    """Green marks the dark nose, eyes and pads, red the breathing, blue the limb (number / 8)
-    and alpha the left leg of a pair."""
+def mark_regions(part, dog, part_of, parts, ear_t):
+    """Vertex marks the site's shader reads: green the dark nose, eyes and pads, red the
+    breathing (the body only). _root is 1 on an ear's root, where its outline stays open."""
     me = dog.data
     mark = me.color_attributes.new("Mark", "FLOAT_COLOR", "POINT")
     marks = np.zeros((len(me.vertices), 4), dtype=np.float32)
-    for i, part in enumerate(parts):
-        if part:
-            marks[part_of == i, :2] = part[1]
-    co = np.zeros(len(me.vertices) * 3)
-    me.vertices.foreach_get("co", co)
-    co = co.reshape(-1, 3)
-    swell = np.exp(-((co[:, 0] - BREATH_AT[0]) / BREATH_SIZE[0]) ** 2 - ((co[:, 2] - BREATH_AT[1]) / BREATH_SIZE[1]) ** 2)
-    marks[:, 0] = np.where(part_of == 0, swell, 0)
-    chains = [bone.rstrip("0123456789") for bone in main_bone]
-    marks[:, 2] = [LIMBS.get(c, 0) / 8 for c in chains]
-    marks[:, 3] = [1.0 if c in LEFT else 0.0 for c in chains]
+    for i, detail in enumerate(parts):
+        if detail:
+            marks[part_of == i, :2] = detail[1]
+    if part == "Body":
+        co = np.zeros(len(me.vertices) * 3)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3)
+        swell = np.exp(-((co[:, 0] - BREATH_AT[0]) / BREATH_SIZE[0]) ** 2 - ((co[:, 2] - BREATH_AT[1]) / BREATH_SIZE[1]) ** 2)
+        marks[:, 0] = np.where(part_of == 0, swell, 0)
     mark.data.foreach_set("color", marks.ravel())
     me.color_attributes.active_color = mark
+    # Smooth across each triangle, so the open stretch of the outline ends cleanly.
+    root = np.zeros(len(me.vertices), dtype=np.float32)
+    if ear_t is not None:
+        root = (ear_t < EAR_ROOT).astype(np.float32)
+    elif part in dog_asset["LEGS"] or part == "Tail":   # the tail joins the rump without a line too (2026-11-08)
+        co = np.zeros(len(me.vertices) * 3)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3)
+        dist = dog_asset["chain_distances"](co)
+        body = np.min(np.stack([dist[c] for c in dog_asset["PARTS"]["Body"]]), axis=0)
+        points = np.array([p[:3] for p in next(c[2] for c in dog_asset["CHAINS"] if c[0] == part)])
+        top, foot = points[0], points[-1]
+        t = np.clip((co - top) @ (foot - top) / ((foot - top) @ (foot - top)), 0, 1)
+        root = ((body < JOINT_REACH) & (t < JOINT_UPPER)).astype(np.float32)
+    me.attributes.new("_root", "FLOAT", "POINT").data.foreach_set("value", root)
     me.materials.clear()
     me.materials.append(M["M_Dog"])
 
@@ -132,16 +146,17 @@ for old in [m for m in bpy.data.meshes if m.name.startswith("Dog") and not m.use
     bpy.data.meshes.remove(old)     # left over from earlier builds
 dog_asset = {"__name__": "dog_asset"}
 exec(compile(open(f"{DOG_DIR}/build_dog_asset.py").read(), f"{DOG_DIR}/build_dog_asset.py", "exec"), dog_asset)
-dog_rig, dog, dog_parts, dog_part_list, dog_main_bone = dog_asset["build"](ACTIVE)
+dog_rig, dog_parts = dog_asset["build"](ACTIVE)
 # The rig stands at the middle of the cushion; each pose's Root places the dog in the bed.
 dog_rig.parent = dog_bed
 dog_rig.location = (0, 0, DOG_LIFT)
 dog_rig.scale = (DOG_SCALE,) * 3
-mark_regions(dog, dog_parts, dog_part_list, dog_main_bone)
+for dog_part, (dog_ob, dog_part_of, dog_details, _, dog_ear_t) in dog_parts.items():
+    mark_regions(dog_part, dog_ob, dog_part_of, dog_details, dog_ear_t)
 try:
     with open(f"{DOG_DIR}/poses.json") as f:
         dog_poses = json.load(f)
 except FileNotFoundError:
     dog_poses = {}
 add_poses(dog_rig, dog_poses)
-print("DOG", len(dog.data.polygons), "faces", len(dog.data.vertices), "verts", len(dog_rig.data.bones), "bones,", "poses:", list(dog_poses))
+print("DOG", {p: len(o[0].data.polygons) for p, o in dog_parts.items()}, "faces,", len(dog_rig.data.bones), "bones,", "poses:", list(dog_poses))

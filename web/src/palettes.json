@@ -1,7 +1,7 @@
 {
   "predawn": {
     "dogHover": "dream",
-    "dogPose": "Stretch",
+    "dogPose": "Side_A",
     "label": "Pre-dawn",
     "sky": "#6B6A9E",
     "skyTop": "#4B4C80",
@@ -143,7 +143,7 @@
   },
   "morning": {
     "dogHover": "sigh",
-    "dogPose": "Donut",
+    "dogPose": "Donut_A",
     "label": "Morning",
     "sky": "#E2F0F8",
     "skyTop": "#EEF7FB",
@@ -212,7 +212,7 @@
   },
   "afternoon": {
     "dogHover": "dream",
-    "dogPose": "Stretch",
+    "dogPose": "Side_A",
     "label": "Afternoon",
     "sky": "#DCE8F1",
     "skyTop": "#E6EFF6",
