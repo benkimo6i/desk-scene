@@ -1,6 +1,6 @@
 // What the sleeping dog does under the cursor, which depends on how it is lying.
 //   dream: the tail thumps and paws twitch for as long as the cursor stays.
-//   sigh: one deep breath: the chest swells, the body rises, and the head lifts, then all settle.
+//   sigh: one deep breath: the chest swells and the body rises, then both settle.
 //   flick: the ear flicks twice.
 import * as THREE from 'three';
 
@@ -18,7 +18,6 @@ const PAW_FLEX = degrees(11);
 
 const SIGH_DEPTH = 0.06; // metres the chest swells, on top of normal breathing
 const SIGH_RISE = 0.012; // metres the whole body rises with it
-const SIGH_HEAD = degrees(7); // the head lifts on the way in
 const SIGH_SECONDS = 4;
 const SIGH_IN = 0.4; // share of the sigh spent breathing in; the long rest is the slow breath out
 // 0 to 1 and back: a quick, smooth breath in, then a slower one out.
@@ -79,7 +78,6 @@ export function createDogHover(root) {
       if (!kind) return;
       root.updateMatrixWorld(true);
       if (kind === 'sigh') {
-        moves = [move('Neck1', lifting('Neck1', 'Head0'))];
         const bone = root.getObjectByName('Root');
         const toParent = bone.parent.matrixWorld.clone().invert();
         const up = UP.clone().transformDirection(toParent).multiplyScalar(SIGH_RISE / bone.parent.getWorldScale(new THREE.Vector3()).y);
@@ -122,7 +120,6 @@ export function createDogHover(root) {
       }
       if (kind === 'sigh') {
         const s = sighAt(now);
-        pose(moves[0], SIGH_HEAD * s);
         body.bone.position.copy(body.rest).addScaledVector(body.up, s);
         return (now - started) / 1000 < SIGH_SECONDS + 0.1;
       }
