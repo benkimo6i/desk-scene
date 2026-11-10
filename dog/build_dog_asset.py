@@ -678,6 +678,17 @@ def build_skeleton(collection, name="DogRig"):
     return rig, segments
 
 
+def world_verts(ob):
+    """The evaluated (posed) mesh's vertices in world space, n x 3."""
+    e = ob.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    me = e.to_mesh()
+    co = np.zeros(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    m = np.array(e.matrix_world)
+    e.to_mesh_clear()
+    return co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+
+
 def chain_distances(co, only=None):
     """Each point's distance to the surface of every chain (negative inside), by chain name; only
     limits it to the named chains."""

@@ -182,13 +182,7 @@ def bend_keep_chest(total, bones=("Spine1", "Spine2", "Spine3"), axis=(0, 1, 0))
     upd()
 
 
-def world_verts(o):
-    dg = bpy.context.evaluated_depsgraph_get()
-    e = o.evaluated_get(dg)
-    me = e.to_mesh()
-    co = np.array([e.matrix_world @ v.co for v in me.vertices])
-    e.to_mesh_clear()
-    return co
+world_verts = asset["world_verts"]
 
 
 def settle(spot=(0, 0), sink=SINK):
