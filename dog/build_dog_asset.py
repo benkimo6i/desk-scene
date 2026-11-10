@@ -14,6 +14,7 @@ import bmesh
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.kdtree import KDTree
 
 CELL = 0.0035                       # sculpting resolution
 
@@ -162,15 +163,13 @@ def paw_frame(points):
 def skin_distance(q, chains):
     """The sculpted surface's distance at points q (n x 3), built from the named chains the way
     sculpt() builds a part: negative inside."""
-    x, y, z = q[:, 0], q[:, 1], q[:, 2]
+    limbs = chain_distances(q, chains)
     field = np.full(len(q), 1.0)
     first = True
-    for name, _, points, blend, flatten in CHAINS:
+    for name, _, _, blend, _ in CHAINS:
         if name not in chains:
             continue
-        limb = np.full(len(q), 1.0)
-        for p0, p1 in zip(points, points[1:]):
-            limb = np.minimum(limb, capsule(x, y, z, np.array(p0[:3]), p0[3], np.array(p1[:3]), p1[3], flatten))
+        limb = np.minimum(limbs[name], 1.0)
         field = np.minimum(field, limb) if (first or not blend) else smooth_min(field, limb, blend)
         first = False
     return field
@@ -473,7 +472,7 @@ EAR_FOLD_DIR = (-0.75, 0.15, -0.55) # back, out and down, in head terms (along, 
 EAR_FOLD_FORWARD = 0.035            # the folded ear's root moves this far forward, to just behind the eye (user, 2026-11-08)
 
 
-def ear_flap(side, body, folded=False):
+def ear_flap(side, folded=False):
     """Builds one ear as its own closed, thin mesh in dog space. Returns the mesh and each
     vertex's place down the flap (0 at the root, 1 at the tip). Folded lays it back along the
     neck instead (EAR_FOLD_DIR), with the vertices in the same order."""
@@ -578,11 +577,10 @@ def build_meshes():
         part_of, details = add_parts(me, part)
         me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
         meshes[part] = (me, part_of, details, None)
-    body = meshes["Body"][0]
     for side, chain in ((1, "EarL"), (-1, "EarR")):
-        me, t = ear_flap(side, body)
+        me, t = ear_flap(side)
         me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
-        fold, _ = ear_flap(side, body, folded=True)
+        fold, _ = ear_flap(side, folded=True)
         if len(fold.vertices) != len(me.vertices):
             raise RuntimeError("folded ear has different vertices")
         co = np.zeros(len(fold.vertices) * 3)
@@ -680,11 +678,14 @@ def build_skeleton(collection, name="DogRig"):
     return rig, segments
 
 
-def chain_distances(co):
-    """Each vertex's distance to the surface of every chain (negative inside), by chain name."""
+def chain_distances(co, only=None):
+    """Each point's distance to the surface of every chain (negative inside), by chain name; only
+    limits it to the named chains."""
     x, y, z = co[:, 0], co[:, 1], co[:, 2]
     out = {}
     for chain, _, points, _, flatten in CHAINS:
+        if only is not None and chain not in only:
+            continue
         d = np.full(len(co), np.inf)
         for p0, p1 in zip(points, points[1:]):
             d = np.minimum(d, capsule(x, y, z, np.array(p0[:3]), p0[3], np.array(p1[:3]), p1[3], flatten))
@@ -754,11 +755,14 @@ def skin(dog, segments, part_of, parts, part):
     # the toes hinge (rigid to one bone, they lifted off the paw; per vertex, they crumpled, 2026-11-08).
     skin_rows = np.nonzero(part_of == 0)[0]
     if len(skin_rows) < len(co):
-        under = BVHTree.FromPolygons([tuple(c) for c in co[skin_rows]], [(i, i, i) for i in range(len(skin_rows))])
+        under = KDTree(len(skin_rows))
+        for i, c in enumerate(co[skin_rows]):
+            under.insert(Vector(c), i)
+        under.balance()
         # One set of weights per detail (from the skin under its middle), so each stays whole.
         for detail in set(part_of[part_of != 0].tolist()):
             rows = np.nonzero(part_of == detail)[0]
-            nearest = under.find_nearest(Vector(co[rows].mean(axis=0)))[2]
+            nearest = under.find(Vector(co[rows].mean(axis=0)))[1]
             weight[rows] = weight[skin_rows[nearest]]
 
     # The neck's skin goes to its twist bones, which ride on the neck bones (build_skeleton).

@@ -19,6 +19,10 @@ DOG_SCALE = 0.665                   # 5% under the old dog, so the side pose cle
 DOG_LIFT = 0.045                    # the cushion's top
 # Breathing swells the ribs most, fading out over this size (dog space x and z, standing).
 BREATH_AT, BREATH_SIZE = (0.03, 0.37), (0.2, 0.14)
+# The front legs are separate meshes and don't breathe, so the chest stops swelling where a leg
+# lies on it, or it pushes through the leg (review 2026-11-09): within this distance of a front
+# leg standing (dog units), and within BREATH_CLEAR_POSED (m) of one in any pose.
+BREATH_CLEAR_REST, BREATH_CLEAR_POSED = 0.04, 0.035
 # Joints: skin marked _root draws no ink line against the body (main.js), so a leg or ear
 # joins the body without one. On an ear, the flap from its root down to where it slides out
 # from under the root pad; on a leg, its skin near the body around the shoulder or hip
@@ -93,6 +97,8 @@ def mark_regions(part, dog, part_of, parts, ear_t):
         me.vertices.foreach_get("co", co)
         co = co.reshape(-1, 3)
         swell = np.exp(-((co[:, 0] - BREATH_AT[0]) / BREATH_SIZE[0]) ** 2 - ((co[:, 2] - BREATH_AT[1]) / BREATH_SIZE[1]) ** 2)
+        dist = dog_asset["chain_distances"](co)
+        swell *= np.clip(np.minimum(dist["FrontL"], dist["FrontR"]) / BREATH_CLEAR_REST, 0, 1)
         marks[:, 0] = np.where(part_of == 0, swell, 0)
     mark.data.foreach_set("color", marks.ravel())
     me.color_attributes.active_color = mark
@@ -137,6 +143,37 @@ def add_poses(rig, poses):
     dog_asset["reset_pose"](rig)
 
 
+def clear_breath_under_legs(rig, body, legs, poses):
+    """Fades the body's breathing mark to 0 wherever a front leg lies within BREATH_CLEAR_POSED of
+    it in any pose (a folded forearm against the chest, say)."""
+    from mathutils.kdtree import KDTree
+
+    def world_co(o):
+        e = o.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        m = e.to_mesh()
+        co = np.array([e.matrix_world @ v.co for v in m.vertices])
+        e.to_mesh_clear()
+        return co
+
+    near = np.full(len(body.data.vertices), np.inf)
+    for pose in poses.values():
+        dog_asset["apply_pose"](rig, pose)
+        bpy.context.view_layer.update()
+        leg_co = np.vstack([world_co(o) for o in legs])
+        tree = KDTree(len(leg_co))
+        for i, c in enumerate(leg_co):
+            tree.insert(c, i)
+        tree.balance()
+        near = np.minimum(near, [tree.find(c)[2] for c in world_co(body)])
+    dog_asset["reset_pose"](rig)
+    mark = body.data.color_attributes["Mark"]
+    colors = np.zeros(len(near) * 4, dtype=np.float32)
+    mark.data.foreach_get("color", colors)
+    colors = colors.reshape(-1, 4)
+    colors[:, 0] *= np.clip(near / BREATH_CLEAR_POSED, 0, 1)
+    mark.data.foreach_set("color", colors.ravel())
+
+
 use("Dog")
 dog_bed = group("DogBed", loc=BED_LOC)
 mesh("DogBed_Bolster", bed_geo(), MAIN, dog_bed, smooth=True)
@@ -151,12 +188,20 @@ dog_rig, dog_parts = dog_asset["build"](ACTIVE)
 dog_rig.parent = dog_bed
 dog_rig.location = (0, 0, DOG_LIFT)
 dog_rig.scale = (DOG_SCALE,) * 3
+# The ink pass numbers the parts: Body 0, then the legs and tail, then the ears (6 and up, always
+# outlined). The number rides into the GLB as a custom property (main.js reads userData.dog_part).
+DOG_INK_ORDER = [p for p in dog_parts if p == "Body"] + [p for p in dog_parts if p != "Body" and not p.startswith("Ear")] \
+    + [p for p in dog_parts if p.startswith("Ear")]
+assert DOG_INK_ORDER.index("EarL") == 6, DOG_INK_ORDER      # main.js treats 6 and up as ears
 for dog_part, (dog_ob, dog_part_of, dog_details, _, dog_ear_t) in dog_parts.items():
     mark_regions(dog_part, dog_ob, dog_part_of, dog_details, dog_ear_t)
+    dog_ob["dog_part"] = DOG_INK_ORDER.index(dog_part)
 try:
     with open(f"{DOG_DIR}/poses.json") as f:
         dog_poses = json.load(f)
 except FileNotFoundError:
     dog_poses = {}
+# Before the clips go on: their NLA strips would override the poses this applies.
+clear_breath_under_legs(dog_rig, dog_parts["Body"][0], [dog_parts[s][0] for s in ("FrontL", "FrontR")], dog_poses)
 add_poses(dog_rig, dog_poses)
 print("DOG", {p: len(o[0].data.polygons) for p, o in dog_parts.items()}, "faces,", len(dog_rig.data.bones), "bones,", "poses:", list(dog_poses))

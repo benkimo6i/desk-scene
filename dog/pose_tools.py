@@ -118,10 +118,11 @@ def swing_chain(prefix, world_dirs):
 
 
 def fold_leg(leg, dirs=Z_FOLD, paw_droop=70):
-    """Folds a leg with dog-space directions in the chest's frame (both legs fold alike and stack)."""
+    """Folds a leg with dog-space directions in the chest's frame (both legs fold alike and stack).
+    The wrist (bone 3) and toes (bone 4) start from rest, so an earlier bend there doesn't carry over."""
+    for i in (3, 4):
+        rig.pose.bones[f"{leg}{i}"].rotation_quaternion = (1, 0, 0, 0)
     swing_chain(leg, [dog_dir("Spine4", d) for d in dirs])
-    rig.pose.bones[leg + "4"].rotation_quaternion = (1, 0, 0, 0)
-    upd()
     bend(leg + "4", paw_droop)
 
 

@@ -154,7 +154,7 @@ normalRT.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
 // The dog is built from separate parts on one skeleton (dog/build_dog_asset.py): each writes
 // DOG_ID + part / 8, so the ink pass can tell a leg lying over the body from the crease where it
 // grows out of it. Joint skin (a leg near the shoulder or hip, an ear's root) adds ROOT_STEP and
-// draws no line against the body, so legs and ears join it without one.
+// draws no line where it grows out of the body, so legs and ears join it without one.
 const ROOT_STEP = 0.04; // under half a part step (1 / 16)
 const idMaterial = new THREE.ShaderMaterial({
   uniforms: { uId: { value: 0 }, uDog: { value: 0 }, uBreath: { value: 0 } },
@@ -216,8 +216,8 @@ const post = new THREE.ShaderMaterial({
       return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
     }
     // Between meshes, any change of id draws a line. Between the dog's parts: legs, tail and
-    // ears always get one against each other. Against the body, joint skin never does; an ear
-    // always does; a leg or the tail only where there is a depth step, where it lies over the body.
+    // ears always get one against each other. Against the body, an ear always does; a leg, the
+    // tail or joint skin only where there is a depth step, where it lies over the body.
     float partOf(float a) { return a < 1.5 ? -1.0 : floor((a - 2.0) * 8.0 + 0.5); }
     float rootOf(float a) { return step(0.5 * ROOT_STEP, a - 2.0 - partOf(a) / 8.0); }
     float idEdge(float a, float b, float d, float db) {
@@ -226,8 +226,7 @@ const post = new THREE.ShaderMaterial({
       if (pa == pb) return 0.0;
       if (pa > 0.0 && pb > 0.0) return 1.0;
       float other = pa > 0.0 ? a : b;
-      if (rootOf(other) > 0.5) return 0.0;
-      if (partOf(other) >= 6.0) return 1.0;
+      if (partOf(other) >= 6.0 && rootOf(other) < 0.5) return 1.0;
       return step(0.012, abs(db - d) / d);
     }
     void main() {
@@ -242,14 +241,16 @@ const post = new THREE.ShaderMaterial({
       // Second difference: stays zero across a flat surface at any viewing angle.
       float lap = abs(dl + dr - 2.0 * d) + abs(dd + du - 2.0 * d);
       float edge = max(smoothstep(0.25, 0.5, edgeN), smoothstep(0.006, 0.014, lap / d));
-      // Where joint skin meets the body, the crease draws nothing either.
+      // Where joint skin meets the body, the crease draws nothing either, unless the joint lies in
+      // front of a farther part of the body (a real depth step, as in the curled poses).
       float body = 0.0, joint = 0.0;
       for (int k = 0; k < 5; k++) {
         float s = k == 0 ? a : k == 1 ? nl.a : k == 2 ? nr.a : k == 3 ? nd.a : nu.a;
         if (partOf(s) == 0.0) body = 1.0;
         if (partOf(s) > 0.0 && rootOf(s) > 0.5) joint = 1.0;
       }
-      if (body * joint > 0.5) edge = 0.0;
+      float gap = max(max(abs(dl - d), abs(dr - d)), max(abs(dd - d), abs(du - d))) / d;
+      if (body * joint > 0.5 && gap < 0.012) edge = 0.0;
       float idGap = max(max(idEdge(a, nl.a, d, dl), idEdge(a, nr.a, d, dr)), max(idEdge(a, nd.a, d, dd), idEdge(a, nu.a, d, du)));
       if (idGap > 0.0) edge = 1.0;
       vec3 c = mix(texture2D(tColor, vUv).rgb, uInk, edge * 0.8);
@@ -470,8 +471,13 @@ function holdFrame() {
 
 let nextId = 1;
 const DOG_ID = 2; // above every mesh id, which stay at 1 or below
-// The dog's parts, in the order the ink pass numbers them (ears last: 6 and up).
-const DOG_PARTS = ['DogBody', 'DogFrontL', 'DogFrontR', 'DogHindL', 'DogHindR', 'DogTail', 'DogEarL', 'DogEarR'];
+// Each dog part carries its ink number from Blender (build_dog.py: Body 0, ears 6 and up). glTF puts
+// the node's custom properties on the mesh, or on its parent group when it has several primitives.
+function dogPartOf(mesh) {
+  const part = mesh.userData.dog_part ?? mesh.parent?.userData.dog_part;
+  if (part === undefined) console.warn(`${mesh.name} has no dog_part; drawing it as the body`);
+  return part ?? 0;
+}
 // Pieces built separately that read as one surface share an id, so no line draws where they
 // meet: the window wall's pier, the wall under the window and above it (user, 2026-11-08).
 // Their real edges, like the sill's front, still get lines from the normals and depth.
@@ -480,9 +486,9 @@ const sharedIds = {};
 function tagForOutlines(mesh) {
   const group = ONE_SURFACE.find((name) => mesh.name.startsWith(name) || mesh.parent?.name.startsWith(name)) && 'WinWall';
   const id = group ? (sharedIds[group] ??= (nextId++ % 500 + 1) / 512) : (nextId++ % 500 + 1) / 512;
+  const part = mesh.isSkinnedMesh ? dogPartOf(mesh) : -1;
   mesh.onBeforeRender = (_r, _s, _c, _g, material) => {
     if (material !== idMaterial) return;
-    const part = mesh.isSkinnedMesh ? Math.max(DOG_PARTS.indexOf(mesh.name), 0) : -1;
     idMaterial.uniforms.uId.value = part < 0 ? id : DOG_ID + part / 8;
     idMaterial.uniforms.uDog.value = part < 0 ? 0 : 1; // only the dog has breath and root data
     idMaterial.uniforms.uBreath.value = dogBreath.value;
