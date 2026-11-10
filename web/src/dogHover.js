@@ -1,6 +1,6 @@
 // What the sleeping dog does under the cursor, which depends on how it is lying.
 //   dream: the tail thumps and paws twitch for as long as the cursor stays.
-//   sigh: one deep breath.
+//   sigh: one deep breath: the chest swells, the body rises, and the head lifts, then all settle.
 //   flick: the ear flicks twice.
 import * as THREE from 'three';
 
@@ -16,8 +16,13 @@ const PAW_SECONDS = 0.34;
 const PAWS = [['FrontL2', 0.1], ['FrontR2', 0.42], ['HindL2', 0.26], ['HindR2', 0.58]];
 const PAW_FLEX = degrees(11);
 
-const SIGH_DEPTH = 0.03; // metres, on top of normal breathing
-const SIGH_SECONDS = 3.4;
+const SIGH_DEPTH = 0.06; // metres the chest swells, on top of normal breathing
+const SIGH_RISE = 0.012; // metres the whole body rises with it
+const SIGH_HEAD = degrees(7); // the head lifts on the way in
+const SIGH_SECONDS = 4;
+const SIGH_IN = 0.4; // share of the sigh spent breathing in; the long rest is the slow breath out
+// 0 to 1 and back: a quick, smooth breath in, then a slower one out.
+const sighCurve = (t) => (t < SIGH_IN ? Math.sin((t / SIGH_IN) * Math.PI / 2) : Math.cos(((t - SIGH_IN) / (1 - SIGH_IN)) * Math.PI / 2)) ** 2;
 
 const EAR = ['EarL0', 'EarL1']; // the upper ear
 const EAR_LIFT = degrees(30);
@@ -43,13 +48,22 @@ export function createDogHover(root) {
   };
   const pose = (item, angle) => item.bone.quaternion.copy(item.rest).multiply(turn.setFromAxisAngle(item.axis, angle));
 
+  // The Root bone carries the whole dog; rise is world up, in the Root's parent space.
+  let body = null;
   const settle = () => {
     for (const item of moves) item.bone.quaternion.copy(item.rest);
+    if (body) body.bone.position.copy(body.rest);
+    body = null;
     moves = [];
     kind = null;
     active = false;
     level = 0;
     started = -Infinity;
+  };
+  // How far into the sigh right now, 0 to 1 and back (0 when not sighing).
+  const sighAt = (now) => {
+    const t = (now - started) / 1000 / SIGH_SECONDS;
+    return kind === 'sigh' && t > 0 && t < 1 ? sighCurve(t) : 0;
   };
 
   return {
@@ -57,15 +71,20 @@ export function createDogHover(root) {
     get kind() { return kind; },
     // Depth of the sigh right now, in metres.
     sigh(now) {
-      const t = (now - started) / 1000 / SIGH_SECONDS;
-      return kind === 'sigh' && t > 0 && t < 1 ? SIGH_DEPTH * pulse(t) : 0;
+      return SIGH_DEPTH * sighAt(now);
     },
     // Call after the pose is set, because each reaction starts from that pose.
     use(next) {
       kind = next ?? null;
-      if (!kind || kind === 'sigh') return;
+      if (!kind) return;
       root.updateMatrixWorld(true);
-      if (kind === 'dream') {
+      if (kind === 'sigh') {
+        moves = [move('Neck1', lifting('Neck1', 'Head0'))];
+        const bone = root.getObjectByName('Root');
+        const toParent = bone.parent.matrixWorld.clone().invert();
+        const up = UP.clone().transformDirection(toParent).multiplyScalar(SIGH_RISE / bone.parent.getWorldScale(new THREE.Vector3()).y);
+        body = { bone, rest: bone.position.clone(), up };
+      } else if (kind === 'dream') {
         const lift = lifting('Tail0', 'Tail1');
         moves = [...TAIL.map(([name, delay]) => ({ ...move(name, lift, delay), part: 'tail' })),
           ...PAWS.map(([name, delay]) => ({ ...move(name, UP, delay), part: 'paw' }))];
@@ -100,6 +119,12 @@ export function createDogHover(root) {
           pose(item, t > 0 && t < length ? EAR_LIFT * pulse((t / FLICK_SECONDS) % 1) : 0);
         }
         return seconds < length + 0.1;
+      }
+      if (kind === 'sigh') {
+        const s = sighAt(now);
+        pose(moves[0], SIGH_HEAD * s);
+        body.bone.position.copy(body.rest).addScaledVector(body.up, s);
+        return (now - started) / 1000 < SIGH_SECONDS + 0.1;
       }
       return false;
     },
