@@ -399,7 +399,7 @@ def fillet(pts, r, n=3, closed=False):
 
 # -------------------------------------------------------------------- build
 M = {k: toon(k, *v) for k, v in PALETTE.items()}
-M_SCREEN = flat("M_Screen", PALETTE["M_Dark"][2] if P["lamp"] else P["screen"])  # screens stay dark by lamplight
+M_SCREEN = flat("M_Screen", PALETTE["M_Dark"][2] if P["lamp"] else PALETTE["M_Main"][0])  # screens stay dark by lamplight; lit, the period's lit color
 M_BULB = flat("M_Bulb", P["bulb"])
 MAIN, PAPER, SHEET, DARK = M["M_Main"], M["M_Paper"], M["M_Sheet"], M["M_Dark"]
 

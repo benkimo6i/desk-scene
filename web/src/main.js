@@ -10,7 +10,7 @@ import { GRAIN_FINISH, GRAIN_GLSL, createSky, hazeMaterial, setHaze } from './sk
 import { createDogHover } from './dogHover.js';
 import { createHover } from './hover.js';
 import { createPicker } from './picker.js';
-import { GLOW, GLOW_COUNT, createScreens } from './screens.js';
+import { createScreens } from './screens.js';
 import { LAMP, PALETTES, initialPalette, setBackground } from './palettes.js';
 import { createDeskToys } from './deskToys.js';
 import { createPenDrawing } from './penDrawing.js';
@@ -57,29 +57,22 @@ function toonMaterial(tones, marked = false) {
   const m = new THREE.MeshLambertMaterial({ color: '#fff', shadowSide: THREE.DoubleSide });
   if (marked) m.customProgramCacheKey = () => 'marked'; // otherwise it shares the plain program
   m.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, tones, GLOW);
+    Object.assign(s.uniforms, tones);
     if (marked) {
       s.vertexShader = s.vertexShader
         .replace('#include <common>', `#include <common>
           attribute vec3 color;
-          attribute float _sketch_donut_u, _sketch_donut_v, _sketch_stretch_u, _sketch_stretch_v;
-          uniform vec2 uSketchPose; // which pose's baked positions: donut, stretch
           uniform float uBreath;
-          varying float vMark;
-          varying vec2 vSketch;`)
+          varying float vMark;`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           vMark = color.g;
-          vSketch = uSketchPose.x * vec2(_sketch_donut_u, _sketch_donut_v) + uSketchPose.y * vec2(_sketch_stretch_u, _sketch_stretch_v);
           transformed += objectNormal * uBreath * color.r;`);
     }
     s.fragmentShader = s.fragmentShader
       .replace('#include <common>', `#include <common>
-        ${marked ? `varying float vMark; varying vec2 vSketch; uniform vec3 uDark, uInk;
-          uniform float uSketch; uniform int uSketchCount; uniform vec2 uSketchLine[${SKETCH_MAX}];` : ''}
+        ${marked ? 'varying float vMark; uniform vec3 uDark;' : ''}
         uniform vec3 uLit, uShadow, uDeep, uRimColor;
         uniform float uRim;
-        uniform vec3 uGlowPos[${GLOW_COUNT}], uGlowDir[${GLOW_COUNT}], uGlowLevel, uGlowReach, uGlowColor;
-        uniform float uGlowStrength;
         ${GRAIN_GLSL}`)
       .replace('#include <opaque_fragment>', `
         float rim = (1.0 - abs(dot(normalize(vViewPosition), normal))) * step(0.0, normal.y);
@@ -90,32 +83,7 @@ function toonMaterial(tones, marked = false) {
         vec3 tone = base < 0.10 ? uDeep : (v < 0.30 ? uShadow : uLit);
         ${marked ? 'if (vMark > 0.5) tone = uDark * 0.7;' : ''}
         if (uRim > 0.5 && rim + (n - 0.5) * 0.04 > 0.66) tone = mix(tone, uRimColor, 0.55);
-        // Lit screens (screens.js): strongest in front of each screen and on surfaces facing it,
-        // fading out over its reach. A little reaches the sides, so the flat phone lights the desk.
-        float glow = 0.0;
-        for (int i = 0; i < ${GLOW_COUNT}; i++) {
-          vec3 d = -vViewPosition - uGlowPos[i];
-          float dist = length(d);
-          vec3 dir = d / max(dist, 1e-4);
-          float spread = clamp(0.35 + 0.65 * dot(dir, uGlowDir[i]), 0.0, 1.0);
-          float facing = 0.5 + 0.5 * dot(normal, -dir);
-          float fall = 1.0 - smoothstep(0.0, uGlowReach[i], dist);
-          glow += uGlowLevel[i] * spread * facing * fall;
-        }
-        tone = mix(tone, uGlowColor, min(glow, 1.0) * uGlowStrength);
         outgoingLight = tone * ${GRAIN_FINISH};
-        ${marked ? `// A drawn line (the donut's ear). vSketch is where this point of fur sat in the hero
-        // camera's view in that pose, so the line stays on the fur. Ink within about a pixel.
-        if (uSketch > 0.5) {
-          float d = 1e3;
-          for (int i = 0; i < ${SKETCH_MAX - 1}; i++) {
-            if (i >= uSketchCount - 1) break;
-            vec2 a = uSketchLine[i], ab = uSketchLine[i + 1] - a;
-            d = min(d, length(vSketch - a - ab * clamp(dot(vSketch - a, ab) / dot(ab, ab), 0.0, 1.0)));
-          }
-          float perPixel = 0.5 * (length(dFdx(vSketch)) + length(dFdy(vSketch)));
-          outgoingLight = mix(outgoingLight, uInk, 0.8 * (1.0 - smoothstep(0.6, 1.4, d / max(perPixel, 1e-7))));
-        }` : ''}
         #include <opaque_fragment>`);
   };
   return m;
@@ -135,16 +103,7 @@ const chairMaterial = (name) => toonMaterial({ ...TONES[name], uRim: rimOn });
 const CHAIR = { M_Main: chairMaterial('M_Main'), M_Dark: chairMaterial('M_Dark') };
 const dogBreath = { value: 0 }; // how far the ribs have risen, in metres
 const inkLine = { value: new THREE.Color() }; // the outline color, shared with the line pass
-// A line drawn on the dog in one pose (SKETCHES in build_dog.py), filled in when it loads.
-const SKETCH_MAX = 64;
-const sketch = {
-  uSketch: { value: 0 },
-  uSketchCount: { value: 0 },
-  uSketchPose: { value: new THREE.Vector2() },
-  uSketchLine: { value: Array.from({ length: SKETCH_MAX }, () => new THREE.Vector2()) },
-};
-let sketchLines = {}; // pose -> flat [u, v, ...], from the Dog's "sketch" property
-const DOG = toonMaterial({ ...TONES.M_Dog, uDark: TONES.M_Dark.uDeep, uBreath: dogBreath, uInk: inkLine, ...sketch }, true);
+const DOG = toonMaterial({ ...TONES.M_Dog, uDark: TONES.M_Dark.uDeep, uBreath: dogBreath }, true);
 const screens = createScreens();
 const BULB = new THREE.MeshBasicMaterial();
 const lampLight = new THREE.SpotLight('#fff', 0, 0, THREE.MathUtils.degToRad(40), 0, 0); // no falloff, so the pool ends on one clean edge
@@ -177,18 +136,19 @@ const normalRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }
 normalRT.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
 // RGB holds the view normal, alpha holds an id per mesh. The id gives solid lines where
 // two objects meet, even when one is a paper-thin sheet with no real depth step.
-// The dog is one mesh, so it writes 2 + limb / 8 instead (blue and alpha vertex color, from build_dog.py),
-// which lets its legs get lines where they cross each other or lie over the body.
+// The dog is built from separate parts on one skeleton (dog/build_dog_asset.py): each writes
+// DOG_ID + part / 8, so the ink pass can tell a leg lying over the body from the crease where it
+// grows out of it. Joint skin (a leg near the shoulder or hip, an ear's root) adds ROOT_STEP and
+// draws no line where it grows out of the body, so legs and ears join it without one.
+const ROOT_STEP = 0.04; // under half a part step (1 / 16)
 const idMaterial = new THREE.ShaderMaterial({
-  uniforms: { uId: { value: 0 }, uBreath: { value: 0 }, uFolded: { value: new THREE.Vector4() }, uQuiet: { value: new THREE.Vector3() } },
+  uniforms: { uId: { value: 0 }, uDog: { value: 0 }, uBreath: { value: 0 } },
   // The skinning chunks keep outlines on the dog when its bones move, and color carries its breath.
   vertexShader: `varying vec3 vN;
-    flat varying float vLimb;
-    varying float vSide, vQuiet;
+    varying float vRoot;
     attribute vec4 color;
-    attribute float _quiet_donut, _quiet_stretch, _quiet_shrimp;
-    uniform float uBreath;
-    uniform vec3 uQuiet;
+    attribute float _root;
+    uniform float uBreath, uDog;
     #include <common>
     #include <morphtarget_pars_vertex>
     #include <skinning_pars_vertex>
@@ -198,28 +158,18 @@ const idMaterial = new THREE.ShaderMaterial({
       #include <skinbase_vertex>
       #include <skinnormal_vertex>
       vN = normalize(normalMatrix * objectNormal);
-      vLimb = floor(color.b * 8.0 + 0.5);
-      vSide = color.a;
-      vQuiet = dot(uQuiet, vec3(_quiet_donut, _quiet_stretch, _quiet_shrimp)); // this pose's quiet skin
+      vRoot = uDog * _root; // smooth across triangles, so the open stretch ends cleanly
       #include <begin_vertex>
       #include <morphtarget_vertex>
-      transformed += objectNormal * uBreath * color.r;
+      transformed += objectNormal * uBreath * uDog * color.r;
       #include <skinning_vertex>
       gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
     }`,
-  fragmentShader: `varying vec3 vN; flat varying float vLimb; varying float vSide, vQuiet;
+  fragmentShader: `#define ROOT_STEP ${ROOT_STEP.toFixed(3)}
+    varying vec3 vN; varying float vRoot;
     uniform float uId;
-    uniform vec4 uFolded; // legs 1-4 folded out of sight in this pose, whose leftover skin counts as body
     void main() {
-      float limb = vLimb;
-      // Legs 1-2 and 3-4 are pairs: the smooth side value picks between them, not the triangle.
-      if (limb > 0.5 && limb < 4.5) {
-        limb = (limb < 2.5 ? 1.0 : 3.0) + (vSide > 0.5 ? 0.0 : 1.0);
-        if (uFolded[int(limb) - 1] > 0.5) limb = 0.0;
-      }
-      // 6: quiet skin (QUIET in build_dog.py), whose creases draw no lines in this pose.
-      if (vQuiet > 0.5 && abs(limb - 5.0) > 0.5) limb = 6.0; // never the tail, which keeps its outline
-      gl_FragColor = vec4(normalize(vN) * 0.5 + 0.5, uId + limb / 8.0);
+      gl_FragColor = vec4(normalize(vN) * 0.5 + 0.5, uId + (vRoot > 0.5 ? ROOT_STEP : 0.0));
     }`,
 });
 
@@ -239,6 +189,7 @@ const post = new THREE.ShaderMaterial({
   },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
   fragmentShader: `
+    #define ROOT_STEP ${ROOT_STEP.toFixed(3)}
     varying vec2 vUv;
     uniform sampler2D tColor, tNormal, tDepth, tPrev;
     uniform float uPrev;
@@ -249,17 +200,18 @@ const post = new THREE.ShaderMaterial({
       float z = texture2D(tDepth, uv).x * 2.0 - 1.0;
       return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
     }
-    // Between meshes, any change of id draws a line. Inside the dog, two different limbs always
-    // get one, but a limb and the body only where there is a depth step: where the leg lies over
-    // the body, not where it grows out of the shoulder or hip.
-    float limbOf(float a) { return a < 1.5 ? -1.0 : floor((a - 2.0) * 8.0 + 0.5); }
+    // Between meshes, any change of id draws a line. Between the dog's parts: legs, tail and
+    // ears always get one against each other. Against the body, an ear always does; a leg, the
+    // tail or joint skin only where there is a depth step, where it lies over the body.
+    float partOf(float a) { return a < 1.5 ? -1.0 : floor((a - 2.0) * 8.0 + 0.5); }
+    float rootOf(float a) { return step(0.5 * ROOT_STEP, a - 2.0 - partOf(a) / 8.0); }
     float idEdge(float a, float b, float d, float db) {
       if (a < 1.5 || b < 1.5) return step(0.0005, abs(a - b));
-      float la = limbOf(a), lb = limbOf(b);
-      if (la == 6.0 || la == 5.0) la = 0.0; // quiet skin and the tail count as body: the tail
-      if (lb == 6.0 || lb == 5.0) lb = 0.0; // gets a line only where it lies over something
-      if (la == lb) return 0.0;
-      if (la > 0.0 && lb > 0.0) return 1.0;
+      float pa = partOf(a), pb = partOf(b);
+      if (pa == pb) return 0.0;
+      if (pa > 0.0 && pb > 0.0) return 1.0;
+      float other = pa > 0.0 ? a : b;
+      if (partOf(other) >= 6.0 && rootOf(other) < 0.5) return 1.0;
       return step(0.012, abs(db - d) / d);
     }
     void main() {
@@ -274,11 +226,16 @@ const post = new THREE.ShaderMaterial({
       // Second difference: stays zero across a flat surface at any viewing angle.
       float lap = abs(dl + dr - 2.0 * d) + abs(dd + du - 2.0 * d);
       float edge = max(smoothstep(0.25, 0.5, edgeN), smoothstep(0.006, 0.014, lap / d));
-      // Creases in quiet skin (limb 6) draw nothing; outlines against other things still do, and so
-      // does the tail's own outline where it lies over quiet skin.
-      bool quiet = limbOf(a) == 6.0 || limbOf(nl.a) == 6.0 || limbOf(nr.a) == 6.0 || limbOf(nd.a) == 6.0 || limbOf(nu.a) == 6.0;
-      bool tail = limbOf(a) == 5.0 || limbOf(nl.a) == 5.0 || limbOf(nr.a) == 5.0 || limbOf(nd.a) == 5.0 || limbOf(nu.a) == 5.0;
-      if (quiet && !tail) edge = 0.0;
+      // Where joint skin meets the body, the crease draws nothing either, unless the joint lies in
+      // front of a farther part of the body (a real depth step, as in the curled poses).
+      float body = 0.0, joint = 0.0;
+      for (int k = 0; k < 5; k++) {
+        float s = k == 0 ? a : k == 1 ? nl.a : k == 2 ? nr.a : k == 3 ? nd.a : nu.a;
+        if (partOf(s) == 0.0) body = 1.0;
+        if (partOf(s) > 0.0 && rootOf(s) > 0.5) joint = 1.0;
+      }
+      float gap = max(max(abs(dl - d), abs(dr - d)), max(abs(dd - d), abs(du - d))) / d;
+      if (body * joint > 0.5 && gap < 0.012) edge = 0.0;
       float idGap = max(max(idEdge(a, nl.a, d, dl), idEdge(a, nr.a, d, dr)), max(idEdge(a, nd.a, d, dd), idEdge(a, nu.a, d, du)));
       if (idGap > 0.0) edge = 1.0;
       vec3 c = mix(texture2D(tColor, vUv).rgb, uInk, edge * 0.8);
@@ -369,7 +326,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const BREATH_DEPTH = 0.01, BREATH_SECONDS = 4.6;
 let dogMixer = null;
 let dogClips = {};
-let dogMesh = null;
+let dogParts = []; // the dog's meshes, one per part, sharing one skeleton
 let dogHover = null;
 let dogBlockers = []; // the chair sits between the camera and part of the bed
 let pointerMoved = false;
@@ -395,7 +352,7 @@ function requestFrames() {
 function isOverDog() {
   if (!pointer || !dogHover.kind) return false;
   dogRay.setFromCamera({ x: (pointer.x / innerWidth) * 2 - 1, y: 1 - (pointer.y / innerHeight) * 2 }, camera);
-  return dogRay.intersectObjects([dogMesh, ...dogBlockers], false)[0]?.object === dogMesh;
+  return dogParts.includes(dogRay.intersectObjects([...dogParts, ...dogBlockers], false)[0]?.object);
 }
 
 function updatePointerTarget() {
@@ -404,27 +361,22 @@ function updatePointerTarget() {
 
 // The dog holds one sleeping position per period, switched with the rest of the palette.
 // "Away" leaves its bed empty, as if it were out for a walk.
+// In development, ?pose=Name shows that clip in every period, for reviewing poses.
+const REVIEW_POSE = import.meta.env.DEV ? new URLSearchParams(location.search).get('pose') : null;
 function setDogPose(name, reaction) {
   if (!dogMixer) return;
+  if (REVIEW_POSE && name !== 'Away') name = REVIEW_POSE;
   dogHover.settle();
-  dogMesh.visible = name !== 'Away';
-  // A line drawn on the dog in this pose (SKETCHES in build_dog.py), if it has one.
-  const line = sketchLines[name] ?? [];
-  sketch.uSketch.value = line.length ? 1 : 0;
-  sketch.uSketchPose.value.set(name === 'Donut' ? 1 : 0, name === 'Stretch' ? 1 : 0); // _sketch_<pose>_
-  sketch.uSketchCount.value = Math.min(line.length / 2, SKETCH_MAX);
-  sketch.uSketchLine.value.slice(0, sketch.uSketchCount.value).forEach((point, i) => point.set(line[2 * i], line[2 * i + 1]));
-  // A pose can reshape the dog with a shape key of its own name (FILLS in build_dog.py).
-  for (const [key, index] of Object.entries(dogMesh.morphTargetDictionary ?? {})) dogMesh.morphTargetInfluences[index] = key === name ? 1 : 0;
-  idMaterial.uniforms.uQuiet.value.set(name === 'Donut' ? 1 : 0, name === 'Stretch' ? 1 : 0, name === 'Shrimp' ? 1 : 0); // _quiet_<pose>
+  for (const part of dogParts) part.visible = name !== 'Away';
+  // The donut lays its ears back along the neck (the ears' "Folded" shape key, build_dog_asset.py).
+  for (const part of dogParts) {
+    const folded = part.morphTargetDictionary?.Folded;
+    if (folded !== undefined) part.morphTargetInfluences[folded] = name.startsWith('Donut') ? 1 : 0;
+  }
   dogMixer.stopAllAction();
   if (dogClips[name]) dogMixer.clipAction(dogClips[name]).play();
   dogMixer.update(0);
-  // A leg the pose folded away (scaled to nothing in build_dog.py) draws no outline of its own.
-  const folded = (bone) => (dogMesh.skeleton.getBoneByName(bone)?.scale.x ?? 1) < 0.5 ? 1 : 0;
-  // Leg 3 also holds the big thigh, which stays in view even when its lower leg is folded.
-  idMaterial.uniforms.uFolded.value.set(folded('FrontTop0'), folded('FrontLow0'), 0, folded('HindLow0'));
-  dogMesh.boundingSphere = dogMesh.boundingBox = null; // the hit test measures the pose afresh
+  for (const part of dogParts) part.boundingSphere = part.boundingBox = null; // the hit test measures the pose afresh
   if (!reduceMotion.matches) dogHover.use(reaction);
   pointerMoved = true;
 }
@@ -462,7 +414,7 @@ function render(now) {
   if (pen?.dragging) renderer.domElement.style.cursor = 'grabbing';
   else if (pen?.over) renderer.domElement.style.cursor = 'grab';
   else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
-  screens.update(Math.min(elapsed, 0.05), hovered, camera, reduceMotion.matches);
+  screens.update(Math.min(elapsed, 0.05), hovered, reduceMotion.matches);
   driftClouds(elapsed);
   renderer.shadowMap.needsUpdate = shadowsDirty || isRoomMoving();
   if (import.meta.env.DEV && window.__desk && renderer.shadowMap.needsUpdate) window.__desk.shadowRedraws += 1;
@@ -504,12 +456,27 @@ function holdFrame() {
 
 let nextId = 1;
 const DOG_ID = 2; // above every mesh id, which stay at 1 or below
+// Each dog part carries its ink number from Blender (build_dog.py: Body 0, ears 6 and up). glTF puts
+// the node's custom properties on the mesh, or on its parent group when it has several primitives.
+function dogPartOf(mesh) {
+  const part = mesh.userData.dog_part ?? mesh.parent?.userData.dog_part;
+  if (part === undefined) console.warn(`${mesh.name} has no dog_part; drawing it as the body`);
+  return part ?? 0;
+}
+// Pieces built separately that read as one surface share an id, so no line draws where they
+// meet: the window wall's pier, the wall under the window and above it (user, 2026-11-08).
+// Their real edges, like the sill's front, still get lines from the normals and depth.
+const ONE_SURFACE = ['WinWall_Pier', 'WinWall_Sill', 'WinWall_Head'];
+const sharedIds = {};
 function tagForOutlines(mesh) {
-  const id = (nextId++ % 500 + 1) / 512;
+  const group = ONE_SURFACE.find((name) => mesh.name.startsWith(name) || mesh.parent?.name.startsWith(name)) && 'WinWall';
+  const id = group ? (sharedIds[group] ??= (nextId++ % 500 + 1) / 512) : (nextId++ % 500 + 1) / 512;
+  const part = mesh.isSkinnedMesh ? dogPartOf(mesh) : -1;
   mesh.onBeforeRender = (_r, _s, _c, _g, material) => {
     if (material !== idMaterial) return;
-    idMaterial.uniforms.uId.value = mesh.isSkinnedMesh ? DOG_ID : id;
-    idMaterial.uniforms.uBreath.value = mesh.isSkinnedMesh ? dogBreath.value : 0; // only the dog has breath data
+    idMaterial.uniforms.uId.value = part < 0 ? id : DOG_ID + part / 8;
+    idMaterial.uniforms.uDog.value = part < 0 ? 0 : 1; // only the dog has breath and root data
+    idMaterial.uniforms.uBreath.value = dogBreath.value;
     idMaterial.uniformsNeedUpdate = true;
   };
 }
@@ -547,7 +514,8 @@ function applyPalette(name) {
   setLamp(p.lamp > 0);
   shadowsDirty = true;
   pen?.setInk(p.materials.M_Dark[0]);
-  screens.setColors(p.materials.M_Dark[2], p.screen, p.screenGlow);
+  // A lit screen takes the period's lit color, the same as the lamp pool and sunlit surfaces.
+  screens.setColors(p.materials.M_Dark[2], p.materials.M_Main[0]);
   post.uniforms.uInk.value.set(p.line);
   applySkyline(p);
   setBackground(name);
@@ -750,7 +718,6 @@ function showDesk(gltf) {
   lampLight.target.updateMatrixWorld();
   lampPlaced = true;
 
-  screens.place(desk);
   const pickable = { Lamp: LAMP_TARGET, ...screens.targets() };
   if (import.meta.env.DEV) checkFitPoints();
   toys = createDeskToys(desk);
@@ -777,8 +744,7 @@ function showDetails(gltf) {
   pen.setInk(currentPalette.materials.M_Dark[0]);
   dogMixer = new THREE.AnimationMixer(desk);
   dogClips = Object.fromEntries(gltf.animations.map((clip) => [clip.name, clip]));
-  dogMesh = desk.getObjectByProperty('isSkinnedMesh', true);
-  sketchLines = dogMesh.userData.sketch ?? {};
+  desk.traverse((o) => { if (o.isSkinnedMesh) dogParts.push(o); });
   dogHover = createDogHover(desk);
   desk.traverse((o) => { if (o.isMesh && (o.name.startsWith('Chair_') || o.parent?.name.startsWith('Chair_'))) dogBlockers.push(o); });
   setDogPose(currentPalette.dogPose, currentPalette.dogHover);
