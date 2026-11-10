@@ -514,7 +514,8 @@ function applyPalette(name) {
   setLamp(p.lamp > 0);
   shadowsDirty = true;
   pen?.setInk(p.materials.M_Dark[0]);
-  screens.setColors(p.materials.M_Dark[2], p.screen);
+  // A lit screen takes the period's lit color, the same as the lamp pool and sunlit surfaces.
+  screens.setColors(p.materials.M_Dark[2], p.materials.M_Main[0]);
   post.uniforms.uInk.value.set(p.line);
   applySkyline(p);
   setBackground(name);

@@ -8,7 +8,6 @@
     "haze": "#8E7BA0",
     "cloud": "#8C84AE",
     "cloudCount": 2,
-    "screen": "#F1D4C9",
     "line": "#0C0E1B",
     "ink": "#E8B7A5",
     "skyline": [
@@ -80,7 +79,6 @@
     "haze": "#F8C3A0",
     "cloud": "#FFE8D6",
     "cloudCount": 6,
-    "screen": "#FFF1DA",
     "line": "#151B2F",
     "ink": "#3D4E81",
     "skyline": [
@@ -148,7 +146,6 @@
     "haze": "#B6D4E6",
     "cloud": "#FFFFFF",
     "cloudCount": 4,
-    "screen": "#EDF5F9",
     "line": "#0D2C4A",
     "ink": "#1F6AA8",
     "skyline": [
@@ -216,7 +213,6 @@
     "haze": "#8FA9BF",
     "cloud": "#F6F8FA",
     "cloudCount": 3,
-    "screen": "#E0EAF3",
     "line": "#06203F",
     "ink": "#0B4C92",
     "skyline": [
@@ -283,7 +279,6 @@
     "haze": "#E9966A",
     "cloud": "#FFE9C4",
     "cloudCount": 9,
-    "screen": "#FFEEC8",
     "line": "#1A2134",
     "ink": "#4A5D8C",
     "skyline": [
@@ -351,7 +346,6 @@
     "haze": "#5B7DB0",
     "cloud": "#6C88B4",
     "cloudCount": 1,
-    "screen": "#F7DCB0",
     "line": "#070C1B",
     "ink": "#F2C57C",
     "skyline": [
