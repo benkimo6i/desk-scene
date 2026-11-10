@@ -6,7 +6,6 @@ and given its poses from dog/poses.json, one clip per pose. The site picks a pos
 """
 import json
 import numpy as np
-from mathutils import Vector
 
 DOG_DIR = "/Users/benkim/Development/desk-scene/dog"
 BED_LOC = (-1.46, 0.33, 0)
@@ -27,7 +26,7 @@ BREATH_CLEAR_REST, BREATH_CLEAR_POSED = 0.04, 0.035
 # joins the body without one. On an ear, the flap from its root down to where it slides out
 # from under the root pad; on a leg, its skin near the body around the shoulder or hip
 # (user, 2026-11-08: no lines where the legs meet the torso, the parts stay separate).
-EAR_ROOT = 0.3 
+EAR_ROOT = 0.3
 JOINT_REACH = 0.02                  # leg skin this close to the body (standing, dog units) ...
 JOINT_UPPER = 0.45                  # ... in this top share of the leg
 
@@ -89,13 +88,13 @@ def mark_regions(part, dog, part_of, parts, ear_t):
     me = dog.data
     mark = me.color_attributes.new("Mark", "FLOAT_COLOR", "POINT")
     marks = np.zeros((len(me.vertices), 4), dtype=np.float32)
+    co = np.zeros(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
     for i, detail in enumerate(parts):
         if detail:
             marks[part_of == i, :2] = detail[1]
     if part == "Body":
-        co = np.zeros(len(me.vertices) * 3)
-        me.vertices.foreach_get("co", co)
-        co = co.reshape(-1, 3)
         swell = np.exp(-((co[:, 0] - BREATH_AT[0]) / BREATH_SIZE[0]) ** 2 - ((co[:, 2] - BREATH_AT[1]) / BREATH_SIZE[1]) ** 2)
         dist = dog_asset["chain_distances"](co)
         swell *= np.clip(np.minimum(dist["FrontL"], dist["FrontR"]) / BREATH_CLEAR_REST, 0, 1)
@@ -107,9 +106,6 @@ def mark_regions(part, dog, part_of, parts, ear_t):
     if ear_t is not None:
         root = (ear_t < EAR_ROOT).astype(np.float32)
     elif part in dog_asset["LEGS"] or part == "Tail":   # the tail joins the rump without a line too (2026-11-08)
-        co = np.zeros(len(me.vertices) * 3)
-        me.vertices.foreach_get("co", co)
-        co = co.reshape(-1, 3)
         dist = dog_asset["chain_distances"](co)
         body = np.min(np.stack([dist[c] for c in dog_asset["PARTS"]["Body"]]), axis=0)
         points = np.array([p[:3] for p in next(c[2] for c in dog_asset["CHAINS"] if c[0] == part)])
@@ -147,13 +143,7 @@ def clear_breath_under_legs(rig, body, legs, poses):
     """Fades the body's breathing mark to 0 wherever a front leg lies within BREATH_CLEAR_POSED of
     it in any pose (a folded forearm against the chest, say)."""
     from mathutils.kdtree import KDTree
-
-    def world_co(o):
-        e = o.evaluated_get(bpy.context.evaluated_depsgraph_get())
-        m = e.to_mesh()
-        co = np.array([e.matrix_world @ v.co for v in m.vertices])
-        e.to_mesh_clear()
-        return co
+    world_co = dog_asset["world_verts"]
 
     near = np.full(len(body.data.vertices), np.inf)
     for pose in poses.values():
@@ -196,11 +186,12 @@ assert DOG_INK_ORDER.index("EarL") == 6, DOG_INK_ORDER      # main.js treats 6 a
 for dog_part, (dog_ob, dog_part_of, dog_details, _, dog_ear_t) in dog_parts.items():
     mark_regions(dog_part, dog_ob, dog_part_of, dog_details, dog_ear_t)
     dog_ob["dog_part"] = DOG_INK_ORDER.index(dog_part)
-try:
-    with open(f"{DOG_DIR}/poses.json") as f:
-        dog_poses = json.load(f)
-except FileNotFoundError:
-    dog_poses = {}
+# No poses file is an error, not an empty list: the site asks for these clips by name, and
+# without them the dog would stand in the bed in every period with no warning (review 2026-11-09).
+with open(f"{DOG_DIR}/poses.json") as f:
+    dog_poses = json.load(f)
+if not dog_poses:
+    raise RuntimeError(f"{DOG_DIR}/poses.json has no poses")
 # Before the clips go on: their NLA strips would override the poses this applies.
 clear_breath_under_legs(dog_rig, dog_parts["Body"][0], [dog_parts[s][0] for s in ("FrontL", "FrontR")], dog_poses)
 add_poses(dog_rig, dog_poses)

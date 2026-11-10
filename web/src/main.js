@@ -466,10 +466,12 @@ function dogPartOf(mesh) {
 // Pieces built separately that read as one surface share an id, so no line draws where they
 // meet: the window wall's pier, the wall under the window and above it (user, 2026-11-08).
 // Their real edges, like the sill's front, still get lines from the normals and depth.
-const ONE_SURFACE = ['WinWall_Pier', 'WinWall_Sill', 'WinWall_Head'];
+// Name prefix -> surface group; each group gets one id of its own.
+const ONE_SURFACE = { WinWall_Pier: 'WinWall', WinWall_Sill: 'WinWall', WinWall_Head: 'WinWall' };
 const sharedIds = {};
 function tagForOutlines(mesh) {
-  const group = ONE_SURFACE.find((name) => mesh.name.startsWith(name) || mesh.parent?.name.startsWith(name)) && 'WinWall';
+  const prefix = Object.keys(ONE_SURFACE).find((name) => mesh.name.startsWith(name) || mesh.parent?.name.startsWith(name));
+  const group = prefix && ONE_SURFACE[prefix];
   const id = group ? (sharedIds[group] ??= (nextId++ % 500 + 1) / 512) : (nextId++ % 500 + 1) / 512;
   const part = mesh.isSkinnedMesh ? dogPartOf(mesh) : -1;
   mesh.onBeforeRender = (_r, _s, _c, _g, material) => {
