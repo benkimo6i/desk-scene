@@ -11,7 +11,7 @@ p = f"{BASE}/blender/build_desk.py"
 exec(compile(open(p).read(), p, "exec"), {"__name__": "__main__"})
 bpy.ops.wm.save_as_mainfile(filepath=f"{BASE}/blender/desk_scene.blend")
 
-DESK = {"Desk", "Chair", "Laptop", "Monitor", "Phone", "Lamp", "Keyboard", "Mouse", "Mug"}
+DESK = {"Desk", "Chair", "ChairBase", "Laptop", "Monitor", "Phone", "Lamp", "Keyboard", "Mouse", "Mug"}
 ROOM_PREFIXES = ("BackWall", "Floor", "Win", "Shell_")
 
 

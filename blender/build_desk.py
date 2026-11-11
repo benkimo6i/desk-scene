@@ -10,7 +10,7 @@ children, and moving parts hang off pivot Empties (Laptop_Lid, Lamp_Joint*...).
 import bpy
 import json
 from math import radians as R, pi, cos, sin
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 ROOT = "DeskScene"
 LAMP_WATTS = 40.0
@@ -471,27 +471,60 @@ for sx, tag in ((-0.62, "L"), (0.62, "R")):
 mesh("Desk_Stretcher", rslab_geo(1.22, 0.05, 0.026, 0.003, 0.002, 1), MAIN, desk,
      loc=(0, 0.013, 0.36), rot=(R(90), 0, 0))
 
-# --- chair: curved shell and cushion on a bent-tube sled frame
-chair = group("Chair", loc=(-0.02, -0.86, 0), rot=(0, 0, R(-6)))
-mesh("Chair_Seat", pad_geo(0.5, 0.48, 0.05, 5, 10, crown=0.014), MAIN, chair, loc=(0, 0, 0.44), smooth=True)
-shell = mesh("Chair_Back", pad_geo(0.5, 0.64, 0.02, 6, 10, curve=0.035), MAIN, chair,
-             loc=(0, -0.27, 0.84), rot=(R(100), 0, 0), smooth=True)
-mesh("Chair_BackPad", pad_geo(0.45, 0.59, 0.03, 6, 10, curve=0.031), MAIN, shell,
-     loc=(0, 0, -0.03), smooth=True)
-frame = []
+# --- chair: office chair. "Chair" is the part that swivels (seat, back, arms, mechanism,
+# gas column); "ChairBase" is the 5-star base, which stays put when deskToys.js spins the top.
+# Every part is sunk a few mm into the part it hangs from, so nothing floats.
+CHAIR_AT = (-0.02, -0.86, 0)
+SEAT_Z, SEAT_T = 0.42, 0.07
+
+
+def xform(geo, m):
+    return [tuple(m @ Vector(v)) for v in geo[0]], geo[1]
+
+
+chair = group("Chair", loc=CHAIR_AT, rot=(0, 0, R(-6)))
+mesh("Chair_Seat", pad_geo(0.5, 0.48, SEAT_T, 5, 10, crown=0.016), MAIN, chair, loc=(0, 0, SEAT_Z), smooth=True)
+
+# Back: one thick padded slab, tilted 10 degrees back. Its lower front edge sits inside the
+# seat's rear, so it reads as joined (no visible spine, like a real office chair). Its top
+# is about 7.5 cm below the old chair's, low enough to clear more of the scene.
+BACK_W, BACK_H, BACK_T, BACK_TILT = 0.48, 0.62, 0.07, R(100)
+up_ax = Vector((0, cos(BACK_TILT), sin(BACK_TILT)))      # the slab's local +Y (up the back)
+back_c = Vector((0, -0.215, SEAT_Z + 0.05)) + up_ax * (BACK_H / 2)
+mesh("Chair_Back", pad_geo(BACK_W, BACK_H, BACK_T, 5, 10, curve=0.03, crown=0.012), MAIN, chair,
+     loc=tuple(back_c), rot=(BACK_TILT, 0, 0), smooth=True)
+
+metal = [
+    rrect_geo(0.22, 0.24, 0.035, 0.02, 3, z=SEAT_Z - 0.03),               # tilt mechanism
+    lathe_geo([(0.02, 0.17), (0.02, SEAT_Z - 0.025)], 12),               # gas column
+]
+# T-arms: a bar from the mechanism out under the seat, up a post, pad on top.
 for s in (-1, 1):
-    x = s * 0.27
-    path = [(x, 0.28, 0.012), (x, -0.30, 0.012), (x, -0.26, 0.44), (x, -0.24, 0.66),
-            (x, 0.20, 0.66), (x, 0.24, 0.62), (x, 0.20, 0.42)]
-    frame.append(tube_geo(fillet(path, 0.05, 3, closed=True), 0.012, 8, closed=True))
-    mesh(f"Chair_ArmPad_{'L' if s < 0 else 'R'}", rslab_geo(0.05, 0.3, 0.02, 0.016, 0.004, 3), MAIN, chair,
-         loc=(x, 0.0, 0.668))
-frame.append(tube_geo([(-0.27, 0.0, 0.43), (0.27, 0.0, 0.43)], 0.012, 8))
-frame.append(tube_geo([(-0.27, 0.28, 0.012), (0.27, 0.28, 0.012)], 0.012, 8))
-frame.append(tube_geo([(-0.27, -0.262, 0.46), (0.27, -0.262, 0.46)], 0.012, 8))
-for x in (-0.12, 0.12):
-    frame.append(tube_geo([(x, -0.262, 0.46), (x, -0.262, 0.62)], 0.009, 6))
-mesh("Chair_Frame", merge(*frame), DARK, chair, smooth=True)
+    x = s * 0.275
+    metal.append(tube_geo(fillet([(s * 0.09, -0.02, SEAT_Z - 0.01), (x, -0.02, SEAT_Z - 0.01),
+                                  (x, -0.02, 0.665)], 0.04, 3), 0.013, 8))
+    mesh(f"Chair_ArmPad_{'L' if s < 0 else 'R'}", rslab_geo(0.065, 0.27, 0.026, 0.022, 0.004, 3), MAIN, chair,
+         loc=(x, 0.02, 0.655))
+mesh("Chair_Frame", merge(*metal), DARK, chair, smooth=True)
+
+# Base: hub, shroud over the column, five tapered spokes, twin-wheel casters on the floor.
+base = group("ChairBase", loc=CHAIR_AT, rot=(0, 0, R(12)))
+parts = [lathe_geo([(0.036, 0.09), (0.036, 0.24), (0.026, 0.25)], 16),
+         lathe_geo([(0.05, 0.055), (0.06, 0.075), (0.056, 0.1), (0.036, 0.11)], 16)]
+SPOKE_R, WHEEL_R = 0.31, 0.026
+for k in range(5):
+    a = R(90 + 72 * k)
+    d, side = Vector((cos(a), sin(a), 0)), Vector((-sin(a), cos(a), 0))
+    tip = d * SPOKE_R
+    parts.append(tube_geo([(0, 0, 0.085), tuple(tip + Vector((0, 0, 0.066)))], [0.024, 0.014], 6))
+    wheel_c = d * (SPOKE_R + 0.02) + Vector((0, 0, WHEEL_R))
+    parts.append(tube_geo([tuple(tip + Vector((0, 0, 0.07))), tuple(wheel_c + Vector((0, 0, 0.012)))],
+                          0.011, 6))
+    # wheel axle runs across the spoke; build the disc around Z and turn Z onto that axle
+    disc = lathe_geo([(WHEEL_R, -0.011), (WHEEL_R, 0.011)], 14)
+    turn = side.to_track_quat("Z", "X").to_matrix().to_4x4()
+    parts.append(xform(disc, Matrix.Translation(wheel_c) @ turn))
+mesh("Chair_Base", merge(*parts), DARK, base, smooth=True)
 
 # --- desk items
 use("DeskItems")
