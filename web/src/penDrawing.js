@@ -1,5 +1,6 @@
-// Press and drag the pen to write on the loose sheet. The tip follows the cursor across
-// the desk, and ink lands only on the sheet. Ink stays until the page reloads.
+// Press and drag the pen to write in the notebook. The tip follows the cursor across the
+// desk, and ink lands only on the notebook's top page, while it is open (canDraw). Ink stays
+// until the page reloads; shutting the cover hides it.
 import * as THREE from 'three';
 
 const PEN_HALF_LENGTH = 0.07; // from the pen's center to its tip
@@ -22,14 +23,17 @@ function distanceToSegment(p, a, b) {
   return Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t);
 }
 
-export function createPenDrawing(root, element, getCamera) {
+export function createPenDrawing(root, element, getCamera, canDraw = () => true) {
   const pen = root.getObjectByName('Pen');
-  const sheet = root.getObjectByName('LooseSheet_Sheet');
+  const sheet = root.getObjectByName('Notebook_Pages');
   root.updateMatrixWorld(true);
   const sheetBox = new THREE.Box3().setFromObject(sheet);
   const sheetTop = sheetBox.max.y;
   const sheetWidth = sheetBox.max.x - sheetBox.min.x;
   const sheetDepth = sheetBox.max.z - sheetBox.min.z;
+  // Where the tip rests when it isn't on the page: the bare desk, or the shut cover.
+  const deskTop = new THREE.Box3().setFromObject(root.getObjectByName('Desk_Top')).max.y;
+  const bookBox = new THREE.Box3().setFromObject(root.getObjectByName('Notebook')); // measured shut
 
   // Ink is drawn in white and tinted by the material, so it can follow the palette.
   const canvas = document.createElement('canvas');
@@ -68,8 +72,10 @@ export function createPenDrawing(root, element, getCamera) {
     ndc.set((clientX / innerWidth) * 2 - 1, 1 - (clientY / innerHeight) * 2);
     raycaster.setFromCamera(ndc, getCamera());
     if (!raycaster.ray.intersectPlane(plane, hit)) return null;
-    tip.set(clamp(hit.x, DESK_LIMITS.left, DESK_LIMITS.right), sheetTop, clamp(hit.z, DESK_LIMITS.back, DESK_LIMITS.front));
-    const onSheet = hit.x > sheetBox.min.x && hit.x < sheetBox.max.x && hit.z > sheetBox.min.z && hit.z < sheetBox.max.z;
+    const onBook = hit.x > bookBox.min.x && hit.x < bookBox.max.x && hit.z > bookBox.min.z && hit.z < bookBox.max.z;
+    const surface = !onBook ? deskTop : canDraw() ? sheetTop : bookBox.max.y;
+    tip.set(clamp(hit.x, DESK_LIMITS.left, DESK_LIMITS.right), surface, clamp(hit.z, DESK_LIMITS.back, DESK_LIMITS.front));
+    const onSheet = canDraw() && hit.x > sheetBox.min.x && hit.x < sheetBox.max.x && hit.z > sheetBox.min.z && hit.z < sheetBox.max.z;
     if (!onSheet) return null;
     return {
       x: ((hit.x - sheetBox.min.x) / sheetWidth) * canvas.width,

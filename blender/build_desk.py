@@ -533,8 +533,6 @@ MAT_Z = DESK_Z + 0.0008
 # Trimmed blueprint acts as a desk mat
 bp = group("Blueprint", **on_desk(-0.02, -0.16))
 mesh("Blueprint_Sheet", box_geo(0.52, 0.36, 0.0008, (0, 0, 0.0004)), M["M_Blueprint"], bp)
-ls = group("LooseSheet", **on_desk(0.60, -0.19))
-mesh("LooseSheet_Sheet", box_geo(0.21, 0.297, 0.0006, (0, 0, 0.0003)), SHEET, ls)
 
 # Wireless keyboard: a slim wedge, rising towards the back
 kb = group("Keyboard", **on_desk(-0.075, -0.16, 0, MAT_Z))
@@ -639,16 +637,21 @@ z = 0.0
 for nm, w, d, t in (("Book_A", 0.30, 0.22, 0.038), ("Book_B", 0.27, 0.205, 0.03), ("Book_C", 0.235, 0.17, 0.024)):
     z += book(nm, w, d, t, z)
 
-# Spiral notebook, cover hinged along the coil
-note = group("Notebook", **on_desk(0.36, -0.19))
+# Spiral notebook, cover hinged along the coil. It lies where the loose sheet was, so when the
+# web scene drags the cover open (notebook.js) it flips left onto the free desk and the pen can
+# draw on the top page (penDrawing.js).
+note = group("Notebook", **on_desk(0.607, -0.19))
 NW, ND = 0.21, 0.28
 mesh("Notebook_Back", rslab_geo(NW, ND, 0.0015, 0.005, 0.0004), DARK, note)
 mesh("Notebook_Pages", rrect_geo(NW - 0.003, ND - 0.003, 0.009, 0.004, 3, 0.0015), SHEET, note)
 tabs = [box_geo(0.012, 0.017, 0.0005, (NW / 2 + 0.002, y, z)) for y, z in
         ((0.108, 0.0088), (0.066, 0.0072), (0.03, 0.0082), (-0.022, 0.0058), (-0.078, 0.0074))]
 mesh("Notebook_Tabs", merge(*tabs), M["M_Accent"], note)
-nlid = group("Notebook_Cover", note, loc=(-NW / 2, 0, 0.0105))
-mesh("Notebook_CoverBoard", rslab_geo(NW, ND, 0.0015, 0.005, 0.0004), DARK, nlid, loc=(NW / 2, 0, 0))
+# Notebook_Cover turns on its local Y about the coil's center, so the open cover lies flat on the
+# desk. Closed, the board sits just above the page, clear of the ink drawn there.
+COIL_X, COIL_Z = -NW / 2 + 0.006, 0.0065
+nlid = group("Notebook_Cover", note, loc=(COIL_X, 0, COIL_Z))
+mesh("Notebook_CoverBoard", rslab_geo(NW, ND, 0.0015, 0.005, 0.0004), DARK, nlid, loc=(-COIL_X, 0, 0.011 - COIL_Z))
 coils = []
 for i in range(17):
     y = -ND / 2 + 0.012 + i * (ND - 0.024) / 16
@@ -666,22 +669,26 @@ mesh("Pen_Button", lathe_geo([(0.0034, 0.07), (0.0034, 0.08), (0.0024, 0.082)], 
 clip = tube_geo(fillet([(0.0052, 0, 0.066), (0.0078, 0, 0.066), (0.0078, 0, 0.022), (0.0064, 0, 0.02)], 0.002, 2), 0.0012, 4)
 mesh("Pen_Clip", clip, MAIN, pen)
 
-# Mug, with a dark coffee surface that can be swapped or animated
-mug = group("Mug", **on_desk(0.66, 0.24, 180))
+# Mug, with a dark coffee surface that can be swapped or animated. It stands between the pencil
+# cup and the plant, just behind where the open notebook cover lands; the handle points right
+# and turns 30 degrees toward the camera, so its loop shows.
+mug = group("Mug", **on_desk(0.50, 0.05, -30))
 mesh("Mug_Body", lathe_geo([(0.036, 0), (0.0395, 0.003), (0.042, 0.016), (0.042, 0.088), (0.0405, 0.0925),
                             (0.0385, 0.0905), (0.038, 0.07), (0.036, 0.006)], 28), MAIN, mug, smooth=True)
 mesh("Mug_Coffee", lathe_geo([(0.0378, 0.0705), (0.0378, 0.0715)], 24), DARK, mug)
 handle = fillet([(0.0405, 0, 0.074), (0.074, 0, 0.074), (0.074, 0, 0.024), (0.0405, 0, 0.024)], 0.021, 4)
 mesh("Mug_Handle", tube_geo(handle, 0.0052, 8), MAIN, mug, smooth=True)
 
-# Phone, face up
-ph = group("Phone", **on_desk(0.53, 0.24))
+# Phone, face up between the mouse mat and the notebook. The web scene draws a clock on its
+# screen. The open notebook cover comes to rest on it, slightly tilted (notebook.js), and stops
+# about 1.5 cm short of its left edge, so a sliver of phone still shows.
+ph = group("Phone", **on_desk(0.325, -0.20))
 mesh("Phone_Body", rslab_geo(0.073, 0.15, 0.0075, 0.011, 0.0012), DARK, ph)
 mesh("Phone_Screen", rrect_geo(0.0675, 0.1445, 0.0002, 0.0085, 3, 0.0075), M_SCREEN, ph)
 mesh("Phone_Button", box_geo(0.0012, 0.02, 0.0028, (0.037, 0.03, 0.004)), MAIN, ph)
 
 # Small plant, the scene's one green accent
-pl = group("Plant", **on_desk(0.78, 0.30))
+pl = group("Plant", **on_desk(0.67, 0.30))  # in from the desk's right edge
 mesh("Plant_Saucer", lathe_geo([(0.04, 0), (0.05, 0.008), (0.047, 0.008), (0.04, 0.003)], 18), MAIN, pl, smooth=True)
 mesh("Plant_Pot", lathe_geo([(0.036, 0.003), (0.047, 0.07), (0.05, 0.071), (0.05, 0.083), (0.046, 0.083), (0.044, 0.072)], 18),
      MAIN, pl, smooth=True)
