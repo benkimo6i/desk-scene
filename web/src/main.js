@@ -4,14 +4,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-import skylineData, { CLOUD_END, clouds, towers } from './skylines/san-francisco.js';
 import { CITY_LAYER, createCityLights } from './skylines/cityLights.js';
+import { createClock } from './skylines/clock.js';
 import { GRAIN_FINISH, GRAIN_GLSL, createSky, hazeMaterial, setHaze } from './skylines/atmosphere.js';
 import { createDogHover } from './dogHover.js';
 import { createHover } from './hover.js';
 import { createPicker } from './picker.js';
 import { createScreens } from './screens.js';
-import { LAMP, PALETTES, initialPalette, setBackground } from './palettes.js';
+import { LAMP, PALETTES, initialPalette, periodAt, setBackground } from './palettes.js';
+import { CITIES } from './cities.js';
 import { createDeskToys } from './deskToys.js';
 import { createPenDrawing } from './penDrawing.js';
 
@@ -124,9 +125,15 @@ const LAYERS = [
   { name: 'near', distance: 60, haze: [0, 1], lowShare: 0 },
 ];
 const SKYLINE = LAYERS.map(({ haze }) => hazeMaterial(...haze));
-const cityLights = createCityLights(LAYERS[0].haze, LAYERS[2].haze);
+// A city's backdrop (Seoul's mountain) sits behind its far layer in a darker tone, so it
+// separates from the lighter buildings in front of it, like a ridge in silhouette. Accents
+// share the tone.
+const BACKDROP = hazeMaterial(...LAYERS[0].haze);
+const BACKDROP_DEPTH = 0.6; // how far the backdrop moves from the far tone toward the middle tone
+const BACKDROP_STEP = -0.04; // just behind the far layer's first shape
 const FRONT_DEPTH = 0.55; // the front row's tone, from the middle tone toward the bridge's
-const driftingClouds = [];
+let cityName = null;
+let skyline = null; // the shown city's layers, with its night lights and drifting clouds
 let sky = null;
 
 // Ink lines come from a normals + depth buffer, so nothing is added to the models.
@@ -416,6 +423,7 @@ function render(now) {
   else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
   screens.update(Math.min(elapsed, 0.05), hovered, reduceMotion.matches);
   driftClouds(elapsed);
+  skyline?.clock?.update();
   renderer.shadowMap.needsUpdate = shadowsDirty || isRoomMoving();
   if (import.meta.env.DEV && window.__desk && renderer.shadowMap.needsUpdate) window.__desk.shadowRedraws += 1;
   shadowsDirty = false;
@@ -521,6 +529,7 @@ function applyPalette(name) {
   post.uniforms.uInk.value.set(p.line);
   applySkyline(p);
   setBackground(name);
+  showPalettePick(name);
 }
 
 // The skyline is flat layers well outside the window. Layers sit at different distances
@@ -543,8 +552,11 @@ function applySkyline(p) {
   const [far, middle, bridge] = p.skyline;
   const front = new THREE.Color(middle).lerp(new THREE.Color(bridge), FRONT_DEPTH);
   [far, p.cloud, front, bridge, bridge].forEach((color, i) => setHaze(SKYLINE[i], color, p.haze, LAYERS[i].lowShare));
-  driftingClouds.forEach(({ mesh }, i) => { mesh.visible = i < p.cloudCount; });
-  cityLights.apply(p.city, p.materials.M_Main[0], p.haze); // windows match the lamp's lit color
+  setHaze(BACKDROP, new THREE.Color(far).lerp(new THREE.Color(middle), BACKDROP_DEPTH), p.haze, LAYERS[0].lowShare);
+  if (!skyline) return;
+  skyline.clouds.forEach(({ mesh }, i) => { mesh.visible = i < p.cloudCount; });
+  skyline.lights.apply(p.city, p.materials.M_Main[0], p.haze); // windows match the lamp's lit color
+  skyline.clock?.apply(p.materials.M_Main[0], p.line); // a lit cream face, hands in the ink color
   sky?.apply(p);
 }
 
@@ -555,22 +567,30 @@ const CLOUD_LIMIT = -24;
 let cloudStart = CLOUD_LIMIT;
 
 function fitClouds() {
+  if (!skyline) return;
   const yaw = Math.atan2(home.z - frameAim.z, home.x - frameAim.x);
   const halfWidth = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   const leftEdge = 60 * Math.tan(yaw - halfWidth - SKYLINE_BEARING);
-  cloudStart = THREE.MathUtils.clamp(leftEdge - CLOUD_MARGIN, CLOUD_LIMIT, CLOUD_END - 10);
+  cloudStart = THREE.MathUtils.clamp(leftEdge - CLOUD_MARGIN, CLOUD_LIMIT, skyline.cloudEnd - 10);
 }
 
 function driftClouds(elapsed) {
-  const span = CLOUD_END - cloudStart;
-  for (const cloud of driftingClouds) {
+  if (!skyline) return;
+  const span = skyline.cloudEnd - cloudStart;
+  for (const cloud of skyline.clouds) {
     if (!reduceMotion.matches) cloud.spot = (cloud.spot + (cloud.speed * elapsed) / span) % 1;
     cloud.mesh.position.x = cloudStart + cloud.spot * span;
   }
 }
 
-function addSkyline() {
-  const skyline = new THREE.Group();
+// Builds a city's layers (a skyline module: its shapes by layer, towers, clouds and CLOUD_END,
+// and optionally a working clock, a backdrop and accents for its far layer) in place of the
+// current city's. Accents (Tokyo Tower's bands) lie over the far towers in the backdrop tone,
+// without ink lines.
+function addSkyline({ default: shapes, towers, clouds, CLOUD_END, clock: clockSpec, backdrop = [], accents = [] }) {
+  const group = new THREE.Group();
+  const lights = createCityLights(LAYERS[0].haze, LAYERS[2].haze);
+  const drifting = [];
   const dir = new THREE.Vector3(-Math.cos(SKYLINE_BEARING), 0, -Math.sin(SKYLINE_BEARING));
   LAYERS.forEach(({ name, distance }, i) => {
     const layer = new THREE.Group();
@@ -579,29 +599,74 @@ function addSkyline() {
     layer.scale.setScalar(distance / 60);
     layer.lookAt(home.x, layer.position.y, home.z);
     const step = towers[name] ? TOWER_STEP : SKYLINE_STEP;
-    skylineData[name].forEach((item, order) => {
+    shapes[name].forEach((item, order) => {
       const mesh = new THREE.Mesh(new THREE.ShapeGeometry(toShape(item), 8), SKYLINE[i]);
       mesh.position.z = order * step; // keeps overlapping buildings off a shared plane
       tagForOutlines(mesh);
       layer.add(mesh);
-      if (name === 'clouds') driftingClouds.push({ mesh, ...clouds[order] });
+      if (name === 'clouds') drifting.push({ mesh, ...clouds[order] });
     });
     const row = Object.keys(towers).indexOf(name);
     if (row >= 0) {
-      const first = skylineData[name].length - towers[name].length;
+      const first = shapes[name].length - towers[name].length;
       towers[name].forEach(({ lit, windows }, t) => {
         const litGeometry = lit.length ? new THREE.ShapeGeometry(toShape(lit)) : new THREE.BufferGeometry(); // a shaded wing has no lit side
-        cityLights.addTower(layer, row, litGeometry, windows, (first + t) * step);
+        lights.addTower(layer, row, litGeometry, windows, (first + t) * step);
       });
     }
-    skyline.add(layer);
+    group.add(layer);
   });
-  sky = createSky(home);
-  sky.mesh.layers.set(CITY_LAYER); // no outlines
-  skyline.add(sky.mesh);
-  scene.add(skyline);
+  backdrop.forEach((item) => {
+    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(toShape(item), 8), BACKDROP);
+    mesh.position.z = BACKDROP_STEP;
+    tagForOutlines(mesh);
+    group.children[0].add(mesh);
+  });
+  accents.forEach((item) => {
+    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(toShape(item), 8), BACKDROP);
+    mesh.position.z = shapes.far.length * TOWER_STEP;
+    mesh.layers.set(CITY_LAYER);
+    group.children[0].add(mesh);
+  });
+  let clock = null;
+  if (clockSpec) {
+    clock = createClock(clockSpec, group.children[0], shapes.far.length * TOWER_STEP); // in front of every far tower and its lights
+    tagForOutlines(clock.face);
+  }
+  if (!sky) {
+    sky = createSky(home);
+    sky.mesh.layers.set(CITY_LAYER); // no outlines
+    scene.add(sky.mesh);
+  }
+  if (skyline) {
+    scene.remove(skyline.group);
+    skyline.group.traverse((o) => {
+      o.geometry?.dispose();
+      if (o.material && !SKYLINE.includes(o.material) && o.material !== BACKDROP) o.material.dispose(); // night lights and clocks are per city
+    });
+  }
+  scene.add(group);
+  skyline = { group, lights, clock, clouds: drifting, cloudEnd: CLOUD_END };
+  fitClouds();
   applySkyline(currentPalette);
 }
+
+// Showing another city also moves to its time of day. Picks made while a city is still
+// loading give way to the latest one.
+let cityRequest = 0;
+async function setCity(name) {
+  const request = ++cityRequest;
+  const module = await CITIES[name].skyline();
+  if (request !== cityRequest) return;
+  cityName = name;
+  holdFrame(); // the change cross-fades, like the stages
+  addSkyline(module);
+  applyPalette(periodAt(name));
+}
+
+// Updates the panel's pressed buttons; set once the panel exists.
+let showCityPick = () => {};
+let showPalettePick = () => {};
 
 function reviewPanel(state) {
   const panel = document.createElement('div');
@@ -613,16 +678,20 @@ function reviewPanel(state) {
     const buttons = Object.entries(options).map(([key, { label: text }]) => {
       const b = document.createElement('button');
       b.textContent = text;
-      b.setAttribute('aria-pressed', key === current);
-      b.onclick = () => {
-        pick(key);
-        buttons.forEach((other) => other.setAttribute('aria-pressed', other === b));
-      };
+      b.dataset.key = key;
+      b.onclick = () => pick(key);
       return b;
     });
     panel.append(...buttons);
+    const show = (key) => buttons.forEach((b) => b.setAttribute('aria-pressed', b.dataset.key === key));
+    show(current);
+    return show;
   };
-  group('Time of day', PALETTES, state.palette, applyPalette);
+  showCityPick = group('City', CITIES, state.city, (key) => {
+    showCityPick(key);
+    setCity(key);
+  });
+  showPalettePick = group('Time of day', PALETTES, state.palette, applyPalette);
   document.body.append(panel);
 }
 
@@ -700,13 +769,13 @@ function showRoom(gltf) {
     for (const x of [x0, x1]) for (const z of [z0, z1]) fitPoints.push(new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y1, z));
   }
   resize();
-  paletteName = initialPalette();
+  paletteName = initialPalette(cityName);
   applyPalette(paletteName);
   // The first frame draws now, and the canvas fades in over the page background or the room's
   // still (posters/, made with capturePoster below), which it matches.
   drawFrame(null);
   renderer.domElement.classList.add('shown');
-  if (!params.has('clean')) reviewPanel({ palette: paletteName }); // ?clean hides the time-of-day picker
+  if (!params.has('clean')) reviewPanel({ city: cityName, palette: paletteName }); // ?clean hides the city and time-of-day picker
   requestFrames();
 }
 
@@ -752,10 +821,11 @@ function showDetails(gltf) {
   setDogPose(currentPalette.dogPose, currentPalette.dogHover);
 }
 
-async function showSkyline() {
+async function showSkyline(module) {
   await fadeDone();
+  if (skyline) return; // a City pick got there first
   holdFrame();
-  addSkyline();
+  addSkyline(module);
   shadowsDirty = true;
 }
 
@@ -789,7 +859,9 @@ if (import.meta.env.DEV) {
 }
 
 // roomFile is already downloading when entry.js fetched it alongside this module.
-export function startDesk(roomFile = fetchModel('room')) {
+// city is the one entry.js picked, and skylineFile its skyline module, already loading.
+export function startDesk(roomFile = fetchModel('room'), city = Object.keys(CITIES)[0], skylineFile = CITIES[city].skyline()) {
+  cityName = city;
   const deskFile = fetchModel('desk');
   const detailsFile = fetchModel('details');
   (async () => {
@@ -797,6 +869,6 @@ export function startDesk(roomFile = fetchModel('room')) {
     if (import.meta.env.DEV && params.get('stages') === 'room') return; // for capturePoster
     showDesk(await addStage(await deskFile));
     showDetails(await addStage(await detailsFile));
-    await showSkyline();
+    await showSkyline(await skylineFile);
   })().catch((error) => console.error('The 3D desk could not load', error));
 }

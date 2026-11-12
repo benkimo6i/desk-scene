@@ -92,3 +92,78 @@ export function cloud(x, h, w, seed = 1) {
   }
   return [...top, [x + w * 0.3, h - 0.012 * w], [x - w * 0.3, h - 0.012 * w]];
 }
+
+// Height of a cable at x, hanging between two points in a parabola.
+export const sag = (x, x0, top0, x1, top1, low) => {
+  const t = (x - x0) / (x1 - x0);
+  return (1 - t) * top0 + t * top1 + 4 * t * (1 - t) * (low - (top0 + top1) / 2);
+};
+
+// A suspension cable between two points, with hangers down to the deck every gap. Hangers run
+// on into the deck strip, nearly to its underside: they sit a little deeper in the layer than
+// the deck, so ends stopped at its centre line show above it as small nubs.
+const HANGER_TUCK = 0.14; // the deck strips are 0.34 thick
+export function cable(x0, top0, x1, top1, low, deck, gap = 1.1) {
+  const pts = [];
+  for (let i = 0; i <= 20; i++) {
+    const x = x0 + ((x1 - x0) * i) / 20;
+    pts.push([x, sag(x, x0, top0, x1, top1, low)]);
+  }
+  const hangers = [];
+  for (let x = x0 + gap; x < x1 - 0.4; x += gap) {
+    hangers.push(box(x, 0.06, sag(x, x0, top0, x1, top1, low), deck - HANGER_TUCK));
+  }
+  return [strip(pts, 0.16), ...hangers];
+}
+
+// Repeatable lit windows on a building. widthAt narrows them for a tapering tower.
+export function windows(seed, x, h, widthAt, litShare) {
+  let s = seed;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const lights = [];
+  for (let y = 2.8; y < h - 0.5; y += 0.62) {
+    const half = widthAt(y) / 2 - 0.16;
+    for (let offset = -half; offset <= half; offset += 0.38) {
+      if (rnd() > litShare) continue;
+      lights.push({ x: x + offset, y, w: 0.17, h: 0.27, core: rnd() < 0.3 });
+    }
+  }
+  return lights;
+}
+
+export const LIT_SHARE = 0.42; // how much of a tower's width faces the light
+
+// A plain tower for the night lights: its shape, its lit side and its windows.
+export const litTower = ([x, w, h], i) => ({
+  shape: box(x, w, h),
+  lit: box(x - (w * (1 - LIT_SHARE)) / 2, w * LIT_SHARE, h),
+  windows: windows(101 + i * 7, x, h, () => w, 0.42),
+});
+
+// Repeatable [x, width, height] rows of buildings.
+export function buildingRow(seed, x0, x1, hMin, hMax, wMin, wMax) {
+  let s = seed;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const row = [];
+  for (let x = x0; x < x1;) {
+    const w = wMin + rnd() * (wMax - wMin);
+    row.push([x + w / 2, w, hMin + rnd() * (hMax - hMin)]);
+    x += w * (0.86 + rnd() * 0.2);
+  }
+  return row;
+}
+
+// The drifting clouds every city shares. Each period shows the first cloudCount of these,
+// so the first few start in the main pane. A spot is a share of the visible width, which
+// main.js measures from the current view.
+const CLOUD_SPOTS = [0.62, 0.44, 0.78, 0.52, 0.9, 0.7, 0.34, 0.12, 0.24];
+export const CLOUD_END = 13; // behind the right edge of the window
+export const clouds = CLOUD_SPOTS.map((spot, i) => {
+  const low = i % 3 === 1;
+  const size = (i * 0.37) % 1;
+  return {
+    spot,
+    shape: cloud(0, low ? 10.5 + size * 4.5 : 19 + size * 9, low ? 3 + size * 2.6 : 1.4 + size * 2.2, i + 1),
+    speed: low ? 0.16 : 0.1, // skyline units per second
+  };
+});
