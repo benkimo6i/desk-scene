@@ -7,6 +7,6 @@ An interactive 3D desk, modeled from scratch in Blender and drawn in the browser
 - `web/` is the Vite viewer: `npm install`, then `npm run dev` (port 5180).
 - The site is published at https://benkimo6i.github.io/desk-scene/ by `.github/workflows/pages.yml`, which builds `web/` and deploys it to GitHub Pages on every push to `main`. `npm run build && npx vite preview` in `web/` serves the built site at `/desk-scene/` locally.
 
-The time of day follows the real sun in San Francisco. The picker in the corner switches periods, `?palette=<period>` (predawn, sunrise, morning, afternoon, sunset, night) starts on one, and `?clean` hides the picker. `web/public/posters/` holds the empty-room stills shown while the scene loads, one per period.
+The window shows one of 11 city skylines, picked from the visitor's timezone, and the time of day follows the real sun in that city. The monitor lists the cities and the laptop the times of day; click one to switch. `?city=<name>` and `?palette=<period>` (predawn, sunrise, morning, afternoon, sunset, night) start on one. `web/public/posters/` holds the empty-room stills shown while the scene loads, one per period.
 
 Things to try: hover the monitor, laptop or phone to light its screen, hover the dog, sweep the cursor over the pencils, plant, keyboard and chair, drag the pen to write on the loose sheet, and click the lamp.
