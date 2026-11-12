@@ -418,6 +418,7 @@ function render(now) {
   hover?.update(camera, elapsed, free);
   pen?.update(elapsed, pointer, true);
   updatePointerTarget();
+  screens.hover((hovered?.cells && pointer ? screens.itemAt(camera, [desk], pointer.x, pointer.y) : null) ?? focusItem);
   if (pen?.dragging) renderer.domElement.style.cursor = 'grabbing';
   else if (pen?.over) renderer.domElement.style.cursor = 'grab';
   else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
@@ -529,7 +530,7 @@ function applyPalette(name) {
   post.uniforms.uInk.value.set(p.line);
   applySkyline(p);
   setBackground(name);
-  showPalettePick(name);
+  showPick('Laptop', name);
 }
 
 // The skyline is flat layers well outside the window. Layers sit at different distances
@@ -664,34 +665,56 @@ async function setCity(name) {
   applyPalette(periodAt(name));
 }
 
-// Updates the panel's pressed buttons; set once the panel exists.
-let showCityPick = () => {};
-let showPalettePick = () => {};
+// The controls live on the screens: the monitor lists the cities, the laptop the times of day.
+// The same controls are also real buttons in #controls, for keyboard and screen-reader users:
+// hidden until focus reaches them (index.html). The focused button's item is outlined on its
+// screen, as if hovered.
+const menu = (options) => Object.entries(options).map(([key, { label }]) => ({ key, label }));
+const panelPicks = {}; // device -> marks that device's pressed button
+let focusItem = null;
+function showPick(object, key) {
+  screens.select(object, key);
+  panelPicks[object]?.(key);
+}
+function pickCity(key) {
+  showPick('Monitor', key);
+  setCity(key);
+}
+// A time-of-day pick cross-fades, like a city pick (setCity).
+function pickPalette(key) {
+  holdFrame();
+  applyPalette(key);
+}
+function setupMenus() {
+  screens.setMenu('Monitor', menu(CITIES), cityName, pickCity);
+  screens.setMenu('Laptop', menu(PALETTES), paletteName, pickPalette);
 
-function reviewPanel(state) {
   const panel = document.createElement('div');
-  panel.id = 'review';
-  const group = (title, options, current, pick) => {
+  panel.id = 'controls';
+  const group = (object, title, items, current, pick) => {
+    const box = document.createElement('div');
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-labelledby', `controls-${object}`);
     const label = document.createElement('span');
+    label.id = `controls-${object}`;
     label.textContent = title;
-    panel.append(label);
-    const buttons = Object.entries(options).map(([key, { label: text }]) => {
+    const buttons = items.map(({ key, label: text }) => {
       const b = document.createElement('button');
+      b.type = 'button';
       b.textContent = text;
-      b.dataset.key = key;
       b.onclick = () => pick(key);
+      b.onfocus = () => { focusItem = screens.item(object, key); };
+      b.onblur = () => { focusItem = null; };
+      b.dataset.key = key;
       return b;
     });
-    panel.append(...buttons);
-    const show = (key) => buttons.forEach((b) => b.setAttribute('aria-pressed', b.dataset.key === key));
-    show(current);
-    return show;
+    box.append(label, ...buttons);
+    panel.append(box);
+    panelPicks[object] = (key) => buttons.forEach((b) => b.setAttribute('aria-pressed', b.dataset.key === key));
+    panelPicks[object](current);
   };
-  showCityPick = group('City', CITIES, state.city, (key) => {
-    showCityPick(key);
-    setCity(key);
-  });
-  showPalettePick = group('Time of day', PALETTES, state.palette, applyPalette);
+  group('Monitor', 'City', menu(CITIES), cityName, pickCity);
+  group('Laptop', 'Time of day', menu(PALETTES), paletteName, pickPalette);
   document.body.append(panel);
 }
 
@@ -723,7 +746,7 @@ function dress(root) {
       return;
     }
     if (name === 'M_Screen') {
-      o.material = screens.materialFor(o.name);
+      o.material = screens.attach(o);
       o.castShadow = true;
       return;
     }
@@ -775,7 +798,7 @@ function showRoom(gltf) {
   // still (posters/, made with capturePoster below), which it matches.
   drawFrame(null);
   renderer.domElement.classList.add('shown');
-  if (!params.has('clean')) reviewPanel({ city: cityName, palette: paletteName }); // ?clean hides the city and time-of-day picker
+  setupMenus();
   requestFrames();
 }
 
@@ -831,12 +854,14 @@ async function showSkyline(module) {
 
 renderer.domElement.addEventListener('click', (e) => {
   if (!deskReady || pen?.takeClick()) return;
-  if (pick(camera, e.clientX, e.clientY) === LAMP_TARGET) setLamp(!lampOn);
+  const item = screens.itemAt(camera, [desk], e.clientX, e.clientY);
+  if (item) screens.pick(item);
+  else if (pick(camera, e.clientX, e.clientY) === LAMP_TARGET) setLamp(!lampOn);
 });
 addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; pointerMoved = true; });
 
 // Development only: the room as the still behind the canvas, with the camera at rest.
-// Open /?clean&stages=room&palette=<period>, then call __capturePoster().
+// Open /?stages=room&palette=<period>, then call __capturePoster().
 if (import.meta.env.DEV) {
   window.__capturePoster = async (height = 900, aspect = 2.4, quality = 0.5) => {
     renderer.setAnimationLoop(null);

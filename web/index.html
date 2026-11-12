@@ -13,12 +13,17 @@
          never turns (16:10 and wider) and up to the still's own width (2.4:1). */
       #poster { position: fixed; inset: 0; background: center / auto 100% no-repeat; }
       @media (min-aspect-ratio: 8/5) and (max-aspect-ratio: 12/5) { #poster { background-image: var(--poster); } }
-      #review { position: fixed; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      /* The city and time-of-day controls for keyboard and screen-reader users. Mouse users pick
+         on the monitor and laptop; the panel stays out of sight until a button has focus. */
+      #controls { position: fixed; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
         max-width: calc(100vw - 48px); padding: 8px 10px; border-radius: 8px; background: #fffd; color: #123;
         font: 12px/1.2 system-ui, sans-serif; }
-      #review span { font-weight: 600; margin-left: 6px; }
-      #review button { padding: 4px 8px; border: 1px solid #1236; border-radius: 5px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
-      #review button[aria-pressed='true'] { background: #123; color: #fff; }
+      #controls:not(:focus-within) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      #controls [role='group'] { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+      #controls span { font-weight: 600; }
+      #controls button { padding: 4px 8px; border: 1px solid #1236; border-radius: 5px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
+      #controls button[aria-pressed='true'] { background: #123; color: #fff; }
+      #controls button:focus-visible { outline: 2px solid #123; outline-offset: 2px; }
     </style>
   </head>
   <body>
