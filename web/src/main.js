@@ -273,61 +273,61 @@ const homeAim = new THREE.Vector3();
 const mouse = new THREE.Vector2();
 const eased = new THREE.Vector2();
 
-// As the browser window narrows, the camera turns (and then widens) to keep the room's window
-// and the desk's laptop, monitor and phone in frame. The notebook, pen and the desk's right
-// end may be cut (user, 2026-11-12). export_desk.py bakes these objects' boxes into the camera
-// as fitBoxes, in this order.
+// As the browser window narrows, the view keeps the room's window and the desk's laptop,
+// monitor and phone in frame; the notebook, pen and the desk's right end may be cut (user,
+// 2026-11-12). export_desk.py bakes these objects' boxes into the camera as fitBoxes, in
+// this order.
 const FIT_OBJECTS = ['Laptop', 'Monitor_Panel', 'Phone'];
 // The part of the window that must stay: the right half of its main pane (Blender y 0.15 to
 // the jamb at 0.6, sill to head), where the city's landmarks show. The pane's left mullion is
 // already out of frame at the hero view.
 const WINDOW_PANE = [new THREE.Vector3(-2.0, 0.35, -0.6), new THREE.Vector3(-2.0, 2.75, -0.15)];
-const FIT_CENTER = new THREE.Vector3(); // the middle of everything kept in frame
 const FIT_EDGE = 0.92; // leaves room for the cursor drift
-const frameAim = new THREE.Vector3();
+const frameAim = new THREE.Vector3(); // always the hero aim: the camera never turns or tilts
 const fitPoints = [];
 const fitCheck = new THREE.Vector3();
 
-function fits() {
+// The kept points' leftmost and rightmost screen x (-1 to 1), with the lens unshifted.
+function fitSpan() {
   camera.position.copy(home);
   camera.lookAt(frameAim);
   camera.updateMatrixWorld();
-  return fitPoints.every((point) => Math.abs(fitCheck.copy(point).project(camera).x) < FIT_EDGE);
+  let min = Infinity, max = -Infinity;
+  for (const point of fitPoints) {
+    const x = fitCheck.copy(point).project(camera).x;
+    min = Math.min(min, x);
+    max = Math.max(max, x);
+  }
+  return [min, max];
 }
 
-// Aims the camera turn of the way from its hero aim toward FIT_CENTER, turning only about the
-// vertical: the aim keeps the hero aim's height and distance, so the camera never tilts and the
-// scene doesn't slide up or down as the browser narrows.
-const aimOffset = new THREE.Vector3();
-function aimTurned(turn) {
-  const heroYaw = Math.atan2(homeAim.x - home.x, homeAim.z - home.z);
-  const fitYaw = Math.atan2(FIT_CENTER.x - home.x, FIT_CENTER.z - home.z);
-  const yaw = heroYaw + turn * Math.atan2(Math.sin(fitYaw - heroYaw), Math.cos(fitYaw - heroYaw));
-  aimOffset.subVectors(homeAim, home);
-  const reach = Math.hypot(aimOffset.x, aimOffset.z);
-  frameAim.set(home.x + reach * Math.sin(yaw), homeAim.y, home.z + reach * Math.cos(yaw));
-}
-
-// Narrow windows can't fit everything by turning alone, so the lens widens too, as little as
-// it takes, with the camera aimed at the middle of what it keeps.
+// The hero framing has room to spare on the right, so a narrower window first shifts the lens
+// sideways (like cropping a wider photo: nothing rotates or tilts, so the scene keeps its
+// composition), and only widens the lens, as little as it takes, when shifting isn't enough.
+// Earlier versions turned the camera instead, which moved things as the browser resized.
 const MAX_FOV = 100;
 let baseFov = 0;
+let viewShift = 0; // the last lens shift, in screen units (fitClouds needs the left edge)
 function frameDesk() {
   baseFov ||= camera.fov;
-  if (camera.fov !== baseFov) {
-    camera.fov = baseFov;
-    camera.updateProjectionMatrix();
-  }
-  for (let turn = 0; turn <= 1; turn += 0.02) {
-    aimTurned(turn);
-    if (fits()) return turn;
-  }
-  aimTurned(1);
-  while (!fits() && camera.fov < MAX_FOV) {
+  frameAim.copy(homeAim);
+  camera.fov = baseFov;
+  camera.filmOffset = 0;
+  camera.updateProjectionMatrix();
+  let [min, max] = fitSpan();
+  while (max - min > 2 * FIT_EDGE && camera.fov < MAX_FOV) {
     camera.fov = Math.min(camera.fov + 1, MAX_FOV);
     camera.updateProjectionMatrix();
+    [min, max] = fitSpan();
   }
-  return 1;
+  // How far the view must slide (in screen units) to bring both sides inside the edge.
+  const shift = min < -FIT_EDGE ? min + FIT_EDGE : max > FIT_EDGE ? max - FIT_EDGE : 0;
+  // three slides the frustum by near * filmOffset / filmWidth, and its half-width at near is
+  // near * aspect * tan(fov / 2), so this filmOffset slides the view by shift screen units.
+  camera.filmOffset = shift * camera.aspect * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.getFilmWidth();
+  camera.updateProjectionMatrix();
+  viewShift = shift;
+  return shift;
 }
 
 function resize(w = innerWidth, h = innerHeight) {
@@ -596,7 +596,8 @@ let cloudStart = CLOUD_LIMIT;
 function fitClouds() {
   if (!skyline) return;
   const yaw = Math.atan2(home.z - frameAim.z, home.x - frameAim.x);
-  const halfWidth = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
+  // The view's left half, widened when frameDesk slides the lens left (viewShift < 0).
+  const halfWidth = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect * (1 - viewShift));
   const leftEdge = 60 * Math.tan(yaw - halfWidth - SKYLINE_BEARING);
   cloudStart = THREE.MathUtils.clamp(leftEdge - CLOUD_MARGIN, CLOUD_LIMIT, skyline.cloudEnd - 10);
 }
@@ -820,7 +821,6 @@ function showRoom(gltf) {
   }
   const [low, high] = WINDOW_PANE;
   for (const y of [low.y, high.y]) for (const z of [low.z, high.z]) fitPoints.push(new THREE.Vector3(low.x, y, z));
-  new THREE.Box3().setFromPoints(fitPoints).getCenter(FIT_CENTER); // only its direction is used (aimTurned)
   resize();
   paletteName = initialPalette(cityName);
   applyPalette(paletteName);
