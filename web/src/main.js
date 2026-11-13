@@ -273,11 +273,16 @@ const homeAim = new THREE.Vector3();
 const mouse = new THREE.Vector2();
 const eased = new THREE.Vector2();
 
-// As the window narrows, the camera turns toward the desk's center, keeping the monitor and
-// laptop (left) and the notebook and pen (right) in frame. export_desk.py bakes these same
-// objects' boxes into the camera as fitBoxes, in this order.
-const FIT_OBJECTS = ['Laptop', 'Monitor_Panel', 'Notebook', 'Pen'];
-const DESK_CENTER = new THREE.Vector3(0, 0.8, 0);
+// As the browser window narrows, the camera turns (and then widens) to keep the room's window
+// and the desk's laptop, monitor and phone in frame. The notebook, pen and the desk's right
+// end may be cut (user, 2026-11-12). export_desk.py bakes these objects' boxes into the camera
+// as fitBoxes, in this order.
+const FIT_OBJECTS = ['Laptop', 'Monitor_Panel', 'Phone'];
+// The part of the window that must stay: the right half of its main pane (Blender y 0.15 to
+// the jamb at 0.6, sill to head), where the city's landmarks show. The pane's left mullion is
+// already out of frame at the hero view.
+const WINDOW_PANE = [new THREE.Vector3(-2.0, 0.35, -0.6), new THREE.Vector3(-2.0, 2.75, -0.15)];
+const FIT_CENTER = new THREE.Vector3(); // the middle of everything kept in frame
 const FIT_EDGE = 0.92; // leaves room for the cursor drift
 const frameAim = new THREE.Vector3();
 const fitPoints = [];
@@ -290,8 +295,8 @@ function fits() {
   return fitPoints.every((point) => Math.abs(fitCheck.copy(point).project(camera).x) < FIT_EDGE);
 }
 
-// Narrow and portrait windows (phones) can't fit the desk by turning alone, so the lens widens
-// too, as little as it takes, with the camera aimed at the desk's center.
+// Narrow windows can't fit everything by turning alone, so the lens widens too, as little as
+// it takes, with the camera aimed at the middle of what it keeps.
 const MAX_FOV = 100;
 let baseFov = 0;
 function frameDesk() {
@@ -301,10 +306,10 @@ function frameDesk() {
     camera.updateProjectionMatrix();
   }
   for (let turn = 0; turn <= 1; turn += 0.02) {
-    frameAim.lerpVectors(homeAim, DESK_CENTER, turn);
+    frameAim.lerpVectors(homeAim, FIT_CENTER, turn);
     if (fits()) return turn;
   }
-  frameAim.copy(DESK_CENTER);
+  frameAim.copy(FIT_CENTER);
   while (!fits() && camera.fov < MAX_FOV) {
     camera.fov = Math.min(camera.fov + 1, MAX_FOV);
     camera.updateProjectionMatrix();
@@ -800,6 +805,9 @@ function showRoom(gltf) {
     const [x0, y0, z0, x1, y1, z1] = fitBoxes.slice(i, i + 6);
     for (const x of [x0, x1]) for (const z of [z0, z1]) fitPoints.push(new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y1, z));
   }
+  const [low, high] = WINDOW_PANE;
+  for (const y of [low.y, high.y]) for (const z of [low.z, high.z]) fitPoints.push(new THREE.Vector3(low.x, y, z));
+  new THREE.Box3().setFromPoints(fitPoints).getCenter(FIT_CENTER);
   resize();
   paletteName = initialPalette(cityName);
   applyPalette(paletteName);
@@ -865,6 +873,13 @@ async function showSkyline(module) {
   addSkyline(module);
   shadowsDirty = true;
 }
+
+// Scrolling over the monitor slides through the cities (screens.js); the page itself never scrolls.
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (!deskReady || !hovered?.carousel) return;
+  e.preventDefault();
+  screens.scroll(hovered, e);
+}, { passive: false });
 
 renderer.domElement.addEventListener('click', (e) => {
   const dragged = [pen, notebook].map((part) => part?.takeClick()).some(Boolean); // both reset

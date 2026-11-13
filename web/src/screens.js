@@ -1,10 +1,15 @@
 // The monitor, laptop and phone screens. Each is dark until the cursor is over its device, then
 // lights up flat in the screen's color. Only the screen face changes: a glow spilling onto the
 // desk didn't match the flat light of the lamp and sun (user, 2026-11-09).
-// The monitor and laptop carry the scene's controls: the monitor lists the cities and the
-// laptop the times of day, glowing in the lit color on the dark screen. The current pick sits
-// in a filled pill; the item under the cursor gets an outline. When a screen lights up, its
-// colors swap, so the menu stays readable.
+// The monitor and laptop carry the scene's controls, glowing in the lit color on the dark screen;
+// when a screen lights up, its colors swap, so the text stays readable.
+// The monitor shows one city at a time, "Hello <city>" as large as fits (the old grid of 11 was
+// too small to read). Scrolling over it slides through the cities, wrapping around: a trackpad
+// moves the list with the fingers and it settles on the nearest city when they stop; a mouse
+// wheel notch moves exactly one. The city applies once the list settles, so a fast scroll
+// costs one cross-fade.
+// The laptop lists the times of day: the current pick sits in a filled pill and the item under
+// the cursor gets an outline.
 // The phone shows the time in the city outside the window, 24-hour, like a lock screen: dim
 // on the dark screen, and dark on the lit one.
 import * as THREE from 'three';
@@ -18,8 +23,9 @@ const MINUTE = 60000;
 
 // px: canvas size, matching the screen's aspect. cols: the menu's columns. margin: the space
 // around the menu, as a share of the canvas height. clock: the screen shows the time instead.
+// carousel: one item at a time, changed by scrolling.
 const SCREENS = [
-  { object: 'Monitor', mesh: 'Monitor_Screen', px: [1024, 576], cols: 3, margin: 0.1 },
+  { object: 'Monitor', mesh: 'Monitor_Screen', px: [1024, 576], carousel: true },
   { object: 'Laptop', mesh: 'Laptop_Screen', px: [768, 512], cols: 2, margin: 0.1 },
   { object: 'Phone', mesh: 'Phone_Screen', px: [320, 685], clock: true },
 ];
@@ -29,7 +35,18 @@ const CLOCK_Y = 0.27; // the time's center, as a share of the screen's height fr
 const CLOCK_WIDTH = 0.96; // the widest time, as a share of the screen's width: nearly edge to edge
 const CLOCK_TRACKING = -0.04; // letter-spacing, as a share of the type size, so the digits can be bigger
 
+const CAROUSEL_WIDTH = 0.86; // the line's widest, as a share of the screen's width
+const CAROUSEL_SIZE = 0.2; // the largest type, as a share of the screen's height (short names)
+const SCROLL_PER_ITEM = 160; // trackpad scroll pixels that move the list by one item
+const SNAP_IDLE = 120; // ms without scrolling before the list settles on the nearest item
+const SNAP_RATE = 14; // per second: how fast it eases onto that item
+
 const ease = (x) => x * x * (3 - 2 * x);
+const wrap = (i, n) => ((i % n) + n) % n;
+
+// A mouse wheel moves in notches; a trackpad scrolls in small steps. Notches arrive in lines
+// (Firefox) or as whole multiples of 120 in the legacy wheelDelta (Chrome, Safari).
+const isNotch = (e) => e.deltaMode === 1 || (e.wheelDeltaY !== 0 && e.wheelDeltaY % 120 === 0);
 
 // The phone screen comes from Blender without UVs. It faces up, so they come straight from its
 // outline, with v = 0 at the top (glTF -z, the end away from the camera), as the menus have it.
@@ -89,6 +106,35 @@ export function createScreens() {
   let time = clockFormat('America/Los_Angeles');
   let shownMinute = -1;
 
+  // The carousel's items around pos (in items; whole numbers sit centred), each line as large
+  // as fits. Neighbours slide in from above and below while it moves.
+  const paintCarousel = ({ canvas, items, pos }, g) => {
+    const n = items.length;
+    if (!n) return;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = ink.getStyle();
+    for (let k = Math.floor(pos); k <= Math.floor(pos) + 1; k++) {
+      const y = canvas.height * (0.5 + k - pos);
+      const text = `Hello ${items[wrap(k, n)].label}`;
+      g.font = `${WEIGHT} 100px ${FONT}`;
+      const size = Math.min(canvas.height * CAROUSEL_SIZE, (100 * canvas.width * CAROUSEL_WIDTH) / g.measureText(text).width);
+      g.font = `${WEIGHT} ${size}px ${FONT}`;
+      g.fillText(text, canvas.width / 2, y + size * 0.04);
+    }
+  };
+
+  const indexOf = (entry, key) => Math.max(0, entry.items.findIndex((item) => item.key === key));
+  // Moves the carousel to key, by the shortest way round from where it is.
+  const jumpTo = (entry, key) => {
+    const n = entry.items.length;
+    if (!n) return;
+    let delta = wrap(indexOf(entry, key) - entry.pos, n);
+    if (delta > n / 2) delta -= n;
+    entry.pos = entry.target = Math.round(entry.pos + delta);
+    entry.mode = 'rest';
+  };
+
   // The time, one size for every reading (set by the widest), so the digits don't jump.
   const paintClock = ({ canvas }, g) => {
     ink.lerpColors(off, on, CLOCK_DIM).lerp(off, ease(byObject.Phone.level));
@@ -114,8 +160,8 @@ export function createScreens() {
     const { canvas } = entry, g = canvas.getContext('2d');
     g.fillStyle = back.getStyle();
     g.fillRect(0, 0, canvas.width, canvas.height);
-    if (entry.clock) {
-      paintClock(entry, g);
+    if (entry.clock || entry.carousel) {
+      (entry.clock ? paintClock : paintCarousel)(entry, g);
       entry.material.map.needsUpdate = true;
       return;
     }
@@ -151,6 +197,28 @@ export function createScreens() {
     }
     entry.material.map.needsUpdate = true;
   };
+  // Eases a carousel onto its target once scrolling stops, then applies that item.
+  function settle(entry, dt, instant) {
+    if (entry.mode === 'follow' && performance.now() - entry.lastScroll > SNAP_IDLE) {
+      entry.target = Math.round(entry.pos);
+      entry.mode = 'snap';
+    }
+    if (entry.mode !== 'snap') return;
+    const step = instant ? 1 : 1 - Math.exp(-dt * SNAP_RATE);
+    entry.pos += (entry.target - entry.pos) * step;
+    if (Math.abs(entry.target - entry.pos) < 1e-3) {
+      const n = entry.items.length;
+      entry.pos = entry.target = wrap(entry.target, n);
+      entry.mode = 'rest';
+      const { key } = entry.items[entry.pos];
+      if (key !== entry.current) {
+        entry.current = key;
+        entry.onPick?.(key);
+      }
+    }
+    paint(entry);
+  }
+
   // Canvas text doesn't wait for web fonts, so redraw once the bold cut has loaded.
   document.fonts?.load(`${WEIGHT} 100px ${FONT}`).then(() => entries.forEach(paint));
 
@@ -180,8 +248,28 @@ export function createScreens() {
 
     // Puts a menu on a device's screen: items are [{ key, label }], onPick(key) runs on a click.
     setMenu(object, items, current, onPick) {
-      Object.assign(byObject[object], { items, current, onPick });
-      paint(byObject[object]);
+      const entry = byObject[object];
+      Object.assign(entry, { items, current, onPick });
+      if (entry.carousel) {
+        entry.pos = entry.target = indexOf(entry, current);
+        entry.mode = 'rest';
+      }
+      paint(entry);
+    },
+
+    // A wheel event over a carousel screen (entry, from targets): slides its items.
+    scroll(entry, e) {
+      if (!entry.carousel || !entry.items.length) return;
+      if (isNotch(e)) {
+        entry.target = Math.round(entry.target) + Math.sign(e.deltaY);
+        entry.mode = 'snap';
+      } else {
+        entry.pos += e.deltaY / SCROLL_PER_ITEM;
+        entry.target = entry.pos;
+        entry.lastScroll = performance.now();
+        entry.mode = 'follow';
+        paint(entry);
+      }
     },
 
     // Marks the current pick on a device's menu.
@@ -189,6 +277,7 @@ export function createScreens() {
       const entry = byObject[object];
       if (entry.current === key) return;
       entry.current = key;
+      if (entry.carousel) jumpTo(entry, key); // picked elsewhere (the keyboard controls)
       paint(entry);
     },
 
@@ -230,6 +319,7 @@ export function createScreens() {
         shownMinute = minute;
         paint(byObject.Phone);
       }
+      for (const entry of entries) if (entry.carousel) settle(entry, dt, instant);
       for (const entry of entries) {
         const target = entry === hovered ? 1 : 0;
         const step = instant ? 1 : dt / (target ? ON_SECONDS : OFF_SECONDS);
