@@ -52,5 +52,11 @@ export function initialPalette(city) {
 
 // The page behind the canvas, seen until the room has drawn.
 export function setBackground(name) {
-  document.documentElement.style.setProperty('--ink', PALETTES[name].ink);
+  const root = document.documentElement.style;
+  root.setProperty('--ink', PALETTES[name].ink);
+  // The small-screen message (index.html): the period's deep wall color with its cream text,
+  // readable in every period (--ink is the cream itself at night and pre-dawn).
+  const [lit, , deep] = PALETTES[name].materials.M_Main;
+  root.setProperty('--fallback-back', deep);
+  root.setProperty('--fallback-text', lit);
 }

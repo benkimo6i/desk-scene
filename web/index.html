@@ -24,10 +24,27 @@
       #controls button { padding: 4px 8px; border: 1px solid #1236; border-radius: 5px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
       #controls button[aria-pressed='true'] { background: #123; color: #fff; }
       #controls button:focus-visible { outline: 2px solid #123; outline-offset: 2px; }
+      /* Shown instead of the scene without a mouse or trackpad (the pen, notebook and hover need
+         one), or while the window is under 1024 x 640 (the menus and clock get too small). A
+         desktop window that grows back past that uncovers the scene, which kept running. */
+      #fallback { display: none; position: fixed; inset: 0; z-index: 1; place-content: center; padding: 24px;
+        background: var(--fallback-back, #083A72); color: var(--fallback-text, #EFE6D2); text-align: center;
+        font-family: 'Inter Tight Variable', Helvetica, Arial, sans-serif; }
+      #fallback h1 { margin: 0 0 8px; font-size: clamp(24px, 6vw, 36px); font-weight: 700; letter-spacing: -0.01em; }
+      #fallback p { margin: 0; font-size: clamp(15px, 4vw, 18px); line-height: 1.4; opacity: 0.85; }
+      @media not all and (any-pointer: fine), (max-width: 1023.98px), (max-height: 639.98px) {
+        #fallback { display: grid; }
+        canvas, #controls { visibility: hidden; }
+        #poster { display: none; } /* and its still isn't fetched */
+      }
     </style>
   </head>
   <body>
     <div id="poster" aria-hidden="true"></div>
+    <main id="fallback">
+      <h1>Best explored on a computer.</h1>
+      <p>This interactive desk needs a mouse and a larger window.</p>
+    </main>
     <script type="module" src="/src/entry.js"></script>
   </body>
 </html>
