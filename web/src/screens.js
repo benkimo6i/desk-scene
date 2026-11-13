@@ -7,7 +7,9 @@
 // too small to read). Scrolling over it slides through the cities, wrapping around: a trackpad
 // moves the list with the fingers and it settles on the nearest city when they stop; a mouse
 // wheel notch moves exactly one. The city applies once the list settles, so a fast scroll
-// costs one cross-fade.
+// costs one cross-fade. A column of dots down the right edge, one per city, marks where the list
+// is; clicking one slides to it. Until someone first scrolls (remembered in this browser), an
+// opacity wave runs down the dots to invite scrolling.
 // The laptop lists the times of day: the current pick sits in a filled pill and the item under
 // the cursor gets an outline.
 // The phone shows the time in the city outside the window, 24-hour, like a lock screen: dim
@@ -35,11 +37,20 @@ const CLOCK_Y = 0.27; // the time's center, as a share of the screen's height fr
 const CLOCK_WIDTH = 0.96; // the widest time, as a share of the screen's width: nearly edge to edge
 const CLOCK_TRACKING = -0.04; // letter-spacing, as a share of the type size, so the digits can be bigger
 
-const CAROUSEL_WIDTH = 0.86; // the line's widest, as a share of the screen's width
+const CAROUSEL_WIDTH = 0.9; // the line's widest, as a share of the width left of the dots
 const CAROUSEL_SIZE = 0.2; // the largest type, as a share of the screen's height (short names)
 const SCROLL_PER_ITEM = 160; // trackpad scroll pixels that move the list by one item
 const SNAP_IDLE = 120; // ms without scrolling before the list settles on the nearest item
 const SNAP_RATE = 14; // per second: how fast it eases onto that item
+const DOT_COLUMN = 0.09; // the dots' column at the right edge, as a share of the screen's width
+const DOT_SPAN = 0.76; // first to last dot, as a share of the screen's height
+const DOT_RADIUS = 0.014; // as a share of the screen's height
+const DOT_DIM = 0.35; // the other cities' dots; the current one is solid
+const DOT_OVER = 0.8; // a dot under the cursor
+const PULSE_SECONDS = 2.5; // one wave down the dots, then a rest, per cycle
+const PULSE_TRAVEL = 0.6; // the share of the cycle the wave spends travelling
+const PULSE_SPREAD = 0.12; // the wave's width, as a share of the column
+const SCROLLED_KEY = 'desk-scene:monitor-scrolled';
 
 const ease = (x) => x * x * (3 - 2 * x);
 const wrap = (i, n) => ((i % n) + n) % n;
@@ -105,12 +116,21 @@ export function createScreens() {
   const point = new THREE.Vector2();
   let time = clockFormat('America/Los_Angeles');
   let shownMinute = -1;
+  let scrolled = false; // someone has scrolled the monitor in this browser: no more pulse
+  try { scrolled = localStorage.getItem(SCROLLED_KEY) === '1'; } catch { /* storage blocked */ }
+  const markScrolled = () => {
+    if (scrolled) return;
+    scrolled = true;
+    try { localStorage.setItem(SCROLLED_KEY, '1'); } catch { /* storage blocked */ }
+  };
 
   // The carousel's items around pos (in items; whole numbers sit centred), each line as large
   // as fits. Neighbours slide in from above and below while it moves.
-  const paintCarousel = ({ canvas, items, pos }, g) => {
+  const paintCarousel = (entry, g) => {
+    const { canvas, items, pos } = entry;
     const n = items.length;
     if (!n) return;
+    const textWidth = canvas.width * (1 - DOT_COLUMN);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = ink.getStyle();
@@ -118,10 +138,44 @@ export function createScreens() {
       const y = canvas.height * (0.5 + k - pos);
       const text = `Hello ${items[wrap(k, n)].label}`;
       g.font = `${WEIGHT} 100px ${FONT}`;
-      const size = Math.min(canvas.height * CAROUSEL_SIZE, (100 * canvas.width * CAROUSEL_WIDTH) / g.measureText(text).width);
+      const size = Math.min(canvas.height * CAROUSEL_SIZE, (100 * textWidth * CAROUSEL_WIDTH) / g.measureText(text).width);
       g.font = `${WEIGHT} ${size}px ${FONT}`;
-      g.fillText(text, canvas.width / 2, y + size * 0.04);
+      g.fillText(text, textWidth / 2 + canvas.width * 0.02, y + size * 0.04);
     }
+    paintDots(entry, g);
+  };
+
+  // The dot column. Each dot's cell (the column's full width, halfway to its neighbours) is what
+  // a click hits, through cells as the menus use them. The current dot follows the list as it
+  // slides, stretched into a short pill.
+  const paintDots = (entry, g) => {
+    const { canvas, items, pos } = entry;
+    const n = items.length;
+    const x = canvas.width * (1 - DOT_COLUMN / 2);
+    const top = canvas.height * (1 - DOT_SPAN) / 2;
+    const step = (canvas.height * DOT_SPAN) / Math.max(n - 1, 1);
+    const r = canvas.height * DOT_RADIUS;
+    const here = wrap(Math.round(pos), n);
+    const now = performance.now() / 1000;
+    const phase = (now % PULSE_SECONDS) / PULSE_SECONDS;
+    const wave = phase < PULSE_TRAVEL ? (phase / PULSE_TRAVEL) * (1 + 2 * PULSE_SPREAD) - PULSE_SPREAD : null;
+    entry.cells = items.map((item, i) => ({
+      ...item, x: canvas.width * (1 - DOT_COLUMN), y: top + (i - 0.5) * step, w: canvas.width * DOT_COLUMN, h: step,
+    }));
+    g.fillStyle = ink.getStyle();
+    items.forEach((item, i) => {
+      const y = top + i * step;
+      let alpha = i === here ? 1 : item.key === entry.over ? DOT_OVER : DOT_DIM;
+      if (entry.pulsing && wave !== null && i !== here) {
+        const d = (wave - i / Math.max(n - 1, 1)) / PULSE_SPREAD;
+        alpha += (1 - alpha) * Math.exp(-d * d);
+      }
+      g.globalAlpha = alpha;
+      const tall = i === here ? r * 2.6 : r;
+      roundRect(g, x - r, y - tall, r * 2, tall * 2, r);
+      g.fill();
+    });
+    g.globalAlpha = 1;
   };
 
   const indexOf = (entry, key) => Math.max(0, entry.items.findIndex((item) => item.key === key));
@@ -260,6 +314,7 @@ export function createScreens() {
     // A wheel event over a carousel screen (entry, from targets): slides its items.
     scroll(entry, e) {
       if (!entry.carousel || !entry.items.length) return;
+      markScrolled();
       if (isNotch(e)) {
         entry.target = Math.round(entry.target) + Math.sign(e.deltaY);
         entry.mode = 'snap';
@@ -307,9 +362,20 @@ export function createScreens() {
       }
     },
 
-    // Runs the item's menu pick.
+    // Runs the item's menu pick. A carousel's dot slides the list there instead, and applies
+    // when it settles.
     pick(item) {
-      item.entry.onPick?.(item.key);
+      const { entry, key } = item;
+      if (!entry.carousel) {
+        entry.onPick?.(key);
+        return;
+      }
+      markScrolled();
+      const n = entry.items.length;
+      let delta = wrap(indexOf(entry, key) - Math.round(entry.target), n);
+      if (delta > n / 2) delta -= n;
+      entry.target = Math.round(entry.target) + delta;
+      entry.mode = 'snap';
     },
 
     // hovered is the pick target under the cursor (one of these entries, or something else).
@@ -319,7 +385,16 @@ export function createScreens() {
         shownMinute = minute;
         paint(byObject.Phone);
       }
-      for (const entry of entries) if (entry.carousel) settle(entry, dt, instant);
+      for (const entry of entries) {
+        if (!entry.carousel) continue;
+        settle(entry, dt, instant);
+        // The invitation runs until the first scroll; reduced motion leaves the dots still.
+        const pulsing = !scrolled && !instant;
+        if (pulsing || entry.pulsing) {
+          entry.pulsing = pulsing;
+          paint(entry);
+        }
+      }
       for (const entry of entries) {
         const target = entry === hovered ? 1 : 0;
         const step = instant ? 1 : dt / (target ? ON_SECONDS : OFF_SECONDS);

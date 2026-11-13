@@ -443,11 +443,13 @@ function render(now) {
   updatePointerTarget();
   const item = hovered?.cells && pointer ? screens.itemAt(camera, [desk], pointer.x, pointer.y) : null;
   screens.hover(item ?? focusItem);
-  // The pointer only marks what a click does something to: a menu item or the lamp. The rest
-  // of a screen lights up under the cursor but keeps the arrow.
+  // The pointer only marks what a click does something to: a menu item, a monitor dot or the
+  // lamp. The rest of a screen lights up under the cursor; the monitor shows an up-down cursor
+  // there, as it scrolls.
   if (pen?.dragging || notebook?.dragging) renderer.domElement.style.cursor = 'grabbing';
   else if (pen?.over || notebook?.over) renderer.domElement.style.cursor = 'grab';
-  else renderer.domElement.style.cursor = item || hovered === LAMP_TARGET ? 'pointer' : '';
+  else if (item || hovered === LAMP_TARGET) renderer.domElement.style.cursor = 'pointer';
+  else renderer.domElement.style.cursor = hovered?.carousel ? 'ns-resize' : ''; // the monitor scrolls
   screens.update(Math.min(elapsed, 0.05), hovered, reduceMotion.matches);
   driftClouds(elapsed);
   skyline?.clock?.update();
