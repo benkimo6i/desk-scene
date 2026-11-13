@@ -295,6 +295,19 @@ function fits() {
   return fitPoints.every((point) => Math.abs(fitCheck.copy(point).project(camera).x) < FIT_EDGE);
 }
 
+// Aims the camera turn of the way from its hero aim toward FIT_CENTER, turning only about the
+// vertical: the aim keeps the hero aim's height and distance, so the camera never tilts and the
+// scene doesn't slide up or down as the browser narrows.
+const aimOffset = new THREE.Vector3();
+function aimTurned(turn) {
+  const heroYaw = Math.atan2(homeAim.x - home.x, homeAim.z - home.z);
+  const fitYaw = Math.atan2(FIT_CENTER.x - home.x, FIT_CENTER.z - home.z);
+  const yaw = heroYaw + turn * Math.atan2(Math.sin(fitYaw - heroYaw), Math.cos(fitYaw - heroYaw));
+  aimOffset.subVectors(homeAim, home);
+  const reach = Math.hypot(aimOffset.x, aimOffset.z);
+  frameAim.set(home.x + reach * Math.sin(yaw), homeAim.y, home.z + reach * Math.cos(yaw));
+}
+
 // Narrow windows can't fit everything by turning alone, so the lens widens too, as little as
 // it takes, with the camera aimed at the middle of what it keeps.
 const MAX_FOV = 100;
@@ -306,10 +319,10 @@ function frameDesk() {
     camera.updateProjectionMatrix();
   }
   for (let turn = 0; turn <= 1; turn += 0.02) {
-    frameAim.lerpVectors(homeAim, FIT_CENTER, turn);
+    aimTurned(turn);
     if (fits()) return turn;
   }
-  frameAim.copy(FIT_CENTER);
+  aimTurned(1);
   while (!fits() && camera.fov < MAX_FOV) {
     camera.fov = Math.min(camera.fov + 1, MAX_FOV);
     camera.updateProjectionMatrix();
@@ -807,7 +820,7 @@ function showRoom(gltf) {
   }
   const [low, high] = WINDOW_PANE;
   for (const y of [low.y, high.y]) for (const z of [low.z, high.z]) fitPoints.push(new THREE.Vector3(low.x, y, z));
-  new THREE.Box3().setFromPoints(fitPoints).getCenter(FIT_CENTER);
+  new THREE.Box3().setFromPoints(fitPoints).getCenter(FIT_CENTER); // only its direction is used (aimTurned)
   resize();
   paletteName = initialPalette(cityName);
   applyPalette(paletteName);
