@@ -15,6 +15,7 @@ import { LAMP, PALETTES, initialPalette, periodAt, setBackground } from './palet
 import { CITIES } from './cities.js';
 import { createDeskToys } from './deskToys.js';
 import { createPenDrawing } from './penDrawing.js';
+import { createNotebook } from './notebook.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -272,41 +273,61 @@ const homeAim = new THREE.Vector3();
 const mouse = new THREE.Vector2();
 const eased = new THREE.Vector2();
 
-// As the window narrows, the camera turns toward the desk's center, keeping the monitor,
-// laptop, phone and mug in frame.
-const DESK_CENTER = new THREE.Vector3(0, 0.8, 0);
+// As the browser window narrows, the view keeps the room's window and the desk's laptop,
+// monitor and phone in frame; the notebook, pen and the desk's right end may be cut (user,
+// 2026-11-12). export_desk.py bakes these objects' boxes into the camera as fitBoxes, in
+// this order.
+const FIT_OBJECTS = ['Laptop', 'Monitor_Panel', 'Phone'];
+// The part of the window that must stay: the right half of its main pane (Blender y 0.15 to
+// the jamb at 0.6, sill to head), where the city's landmarks show. The pane's left mullion is
+// already out of frame at the hero view.
+const WINDOW_PANE = [new THREE.Vector3(-2.0, 0.35, -0.6), new THREE.Vector3(-2.0, 2.75, -0.15)];
 const FIT_EDGE = 0.92; // leaves room for the cursor drift
-const frameAim = new THREE.Vector3();
+const frameAim = new THREE.Vector3(); // always the hero aim: the camera never turns or tilts
 const fitPoints = [];
 const fitCheck = new THREE.Vector3();
 
-function fits() {
+// The kept points' leftmost and rightmost screen x (-1 to 1), with the lens unshifted.
+function fitSpan() {
   camera.position.copy(home);
   camera.lookAt(frameAim);
   camera.updateMatrixWorld();
-  return fitPoints.every((point) => Math.abs(fitCheck.copy(point).project(camera).x) < FIT_EDGE);
+  let min = Infinity, max = -Infinity;
+  for (const point of fitPoints) {
+    const x = fitCheck.copy(point).project(camera).x;
+    min = Math.min(min, x);
+    max = Math.max(max, x);
+  }
+  return [min, max];
 }
 
-// Narrow and portrait windows (phones) can't fit the desk by turning alone, so the lens widens
-// too, as little as it takes, with the camera aimed at the desk's center.
+// The hero framing has room to spare on the right, so a narrower window first shifts the lens
+// sideways (like cropping a wider photo: nothing rotates or tilts, so the scene keeps its
+// composition), and only widens the lens, as little as it takes, when shifting isn't enough.
+// Earlier versions turned the camera instead, which moved things as the browser resized.
 const MAX_FOV = 100;
 let baseFov = 0;
+let viewShift = 0; // the last lens shift, in screen units (fitClouds needs the left edge)
 function frameDesk() {
   baseFov ||= camera.fov;
-  if (camera.fov !== baseFov) {
-    camera.fov = baseFov;
-    camera.updateProjectionMatrix();
-  }
-  for (let turn = 0; turn <= 1; turn += 0.02) {
-    frameAim.lerpVectors(homeAim, DESK_CENTER, turn);
-    if (fits()) return turn;
-  }
-  frameAim.copy(DESK_CENTER);
-  while (!fits() && camera.fov < MAX_FOV) {
+  frameAim.copy(homeAim);
+  camera.fov = baseFov;
+  camera.filmOffset = 0;
+  camera.updateProjectionMatrix();
+  let [min, max] = fitSpan();
+  while (max - min > 2 * FIT_EDGE && camera.fov < MAX_FOV) {
     camera.fov = Math.min(camera.fov + 1, MAX_FOV);
     camera.updateProjectionMatrix();
+    [min, max] = fitSpan();
   }
-  return 1;
+  // How far the view must slide (in screen units) to bring both sides inside the edge.
+  const shift = min < -FIT_EDGE ? min + FIT_EDGE : max > FIT_EDGE ? max - FIT_EDGE : 0;
+  // three slides the frustum by near * filmOffset / filmWidth, and its half-width at near is
+  // near * aspect * tan(fov / 2), so this filmOffset slides the view by shift screen units.
+  camera.filmOffset = shift * camera.aspect * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.getFilmWidth();
+  camera.updateProjectionMatrix();
+  viewShift = shift;
+  return shift;
 }
 
 function resize(w = innerWidth, h = innerHeight) {
@@ -343,13 +364,14 @@ let deskReady = false; // the big pieces have landed and respond to the cursor
 let hover = null;
 let toys = null;
 let pen = null;
+let notebook = null;
 let pick = null;
 let hovered = null;
 let pointer = null;
 let lastFrame = performance.now();
 
 let shadowsDirty = true;
-const isRoomMoving = () => hover?.moving || toys?.moving || pen?.moving;
+const isRoomMoving = () => hover?.moving || toys?.moving || pen?.moving || notebook?.moving;
 
 function requestFrames() {
   lastFrame = performance.now();
@@ -363,7 +385,7 @@ function isOverDog() {
 }
 
 function updatePointerTarget() {
-  hovered = pointer && !pen?.dragging ? pick(camera, pointer.x, pointer.y) : null;
+  hovered = pointer && !pen?.dragging && !notebook?.dragging ? pick(camera, pointer.x, pointer.y) : null;
 }
 
 // The dog holds one sleeping position per period, switched with the rest of the palette.
@@ -409,19 +431,25 @@ function render(now) {
     if (dogHover.update(now)) shadowsDirty = true;
   }
   dogBreath.value = reduceMotion.matches ? 0 : BREATH_DEPTH * (0.5 + 0.5 * Math.sin(now / 1000 * Math.PI * 2 / BREATH_SECONDS)) + (dogHover?.sigh(now) ?? 0);
-  if (!pen?.dragging) eased.lerp(mouse, 0.06); // the view holds still while writing
+  if (!pen?.dragging && !notebook?.dragging) eased.lerp(mouse, 0.06); // the view holds still while writing or turning the cover
   camera.position.copy(home).add(new THREE.Vector3(eased.x * 0.09, -eased.y * 0.05, 0));
   camera.lookAt(frameAim);
   camera.updateMatrixWorld();
-  const free = !pen?.dragging;
+  const free = !pen?.dragging && !notebook?.dragging; // toys and leaves ignore a drag in progress
   toys?.update(camera, elapsed, pointer, free);
   hover?.update(camera, elapsed, free);
   pen?.update(elapsed, pointer, true);
+  notebook?.update(elapsed, pointer, !pen?.dragging && !pen?.over);
   updatePointerTarget();
-  screens.hover((hovered?.cells && pointer ? screens.itemAt(camera, [desk], pointer.x, pointer.y) : null) ?? focusItem);
-  if (pen?.dragging) renderer.domElement.style.cursor = 'grabbing';
-  else if (pen?.over) renderer.domElement.style.cursor = 'grab';
-  else renderer.domElement.style.cursor = hovered ? 'pointer' : '';
+  const item = hovered?.cells && pointer ? screens.itemAt(camera, [desk], pointer.x, pointer.y) : null;
+  screens.hover(item ?? focusItem);
+  // The pointer only marks what a click does something to: a menu item, a monitor dot or the
+  // lamp. The rest of a screen lights up under the cursor; the monitor shows an up-down cursor
+  // there, as it scrolls.
+  if (pen?.dragging || notebook?.dragging) renderer.domElement.style.cursor = 'grabbing';
+  else if (pen?.over || notebook?.over) renderer.domElement.style.cursor = 'grab';
+  else if (item || hovered === LAMP_TARGET) renderer.domElement.style.cursor = 'pointer';
+  else renderer.domElement.style.cursor = hovered?.carousel ? 'ns-resize' : ''; // the monitor scrolls
   screens.update(Math.min(elapsed, 0.05), hovered, reduceMotion.matches);
   driftClouds(elapsed);
   skyline?.clock?.update();
@@ -570,7 +598,8 @@ let cloudStart = CLOUD_LIMIT;
 function fitClouds() {
   if (!skyline) return;
   const yaw = Math.atan2(home.z - frameAim.z, home.x - frameAim.x);
-  const halfWidth = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
+  // The view's left half, widened when frameDesk slides the lens left (viewShift < 0).
+  const halfWidth = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect * (1 - viewShift));
   const leftEdge = 60 * Math.tan(yaw - halfWidth - SKYLINE_BEARING);
   cloudStart = THREE.MathUtils.clamp(leftEdge - CLOUD_MARGIN, CLOUD_LIMIT, skyline.cloudEnd - 10);
 }
@@ -660,6 +689,7 @@ async function setCity(name) {
   const module = await CITIES[name].skyline();
   if (request !== cityRequest) return;
   cityName = name;
+  screens.setZone(CITIES[name].zone);
   holdFrame(); // the change cross-fades, like the stages
   addSkyline(module);
   applyPalette(periodAt(name));
@@ -791,6 +821,8 @@ function showRoom(gltf) {
     const [x0, y0, z0, x1, y1, z1] = fitBoxes.slice(i, i + 6);
     for (const x of [x0, x1]) for (const z of [z0, z1]) fitPoints.push(new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y1, z));
   }
+  const [low, high] = WINDOW_PANE;
+  for (const y of [low.y, high.y]) for (const z of [low.z, high.z]) fitPoints.push(new THREE.Vector3(low.x, y, z));
   resize();
   paletteName = initialPalette(cityName);
   applyPalette(paletteName);
@@ -813,18 +845,17 @@ function showDesk(gltf) {
   lampPlaced = true;
 
   const pickable = { Lamp: LAMP_TARGET, ...screens.targets() };
-  if (import.meta.env.DEV) checkFitPoints();
   toys = createDeskToys(desk);
   pick = createPicker([desk], pickable);
   applyPalette(paletteName); // lights the lamp if this period has it on
   deskReady = true;
-  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, get hover() { return hover; }, toys, get pen() { return pen; }, frameDesk, get lampOn() { return lampOn; }, get dogHover() { return dogHover; } };
+  if (import.meta.env.DEV) window.__desk = { shadowRedraws: 0, scene, get camera() { return camera; }, renderer, get hover() { return hover; }, toys, get pen() { return pen; }, get notebook() { return notebook; }, frameDesk, get lampOn() { return lampOn; }, get dogHover() { return dogHover; } };
 }
 
 // The baked framing points must match what the loaded desk measures, or the export is stale.
 function checkFitPoints() {
   const live = [];
-  for (const name of ['Laptop', 'Monitor_Panel', 'Phone', 'Mug']) {
+  for (const name of FIT_OBJECTS) {
     const box = new THREE.Box3().setFromObject(desk.getObjectByName(name));
     for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) live.push(new THREE.Vector3(x, box.min.y, z), new THREE.Vector3(x, box.max.y, z));
   }
@@ -833,8 +864,14 @@ function checkFitPoints() {
 }
 
 function showDetails(gltf) {
+  if (import.meta.env.DEV) checkFitPoints(); // the notebook and pen arrive with the details
   hover = createHover(desk);
-  pen = createPenDrawing(desk, renderer.domElement, () => camera);
+  pen = createPenDrawing(desk, renderer.domElement, () => camera, () => notebook?.open);
+  notebook = createNotebook(desk, renderer.domElement, () => camera, {
+    reduceMotion: () => reduceMotion.matches,
+    blocked: () => pen.over || pen.dragging,
+    restOn: [desk.getObjectByName('Phone')],
+  });
   pen.setInk(currentPalette.materials.M_Dark[0]);
   dogMixer = new THREE.AnimationMixer(desk);
   dogClips = Object.fromEntries(gltf.animations.map((clip) => [clip.name, clip]));
@@ -852,8 +889,16 @@ async function showSkyline(module) {
   shadowsDirty = true;
 }
 
+// Scrolling over the monitor slides through the cities (screens.js); the page itself never scrolls.
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (!deskReady || !hovered?.carousel) return;
+  e.preventDefault();
+  screens.scroll(hovered, e);
+}, { passive: false });
+
 renderer.domElement.addEventListener('click', (e) => {
-  if (!deskReady || pen?.takeClick()) return;
+  const dragged = [pen, notebook].map((part) => part?.takeClick()).some(Boolean); // both reset
+  if (!deskReady || dragged) return;
   const item = screens.itemAt(camera, [desk], e.clientX, e.clientY);
   if (item) screens.pick(item);
   else if (pick(camera, e.clientX, e.clientY) === LAMP_TARGET) setLamp(!lampOn);
@@ -887,6 +932,7 @@ if (import.meta.env.DEV) {
 // city is the one entry.js picked, and skylineFile its skyline module, already loading.
 export function startDesk(roomFile = fetchModel('room'), city = Object.keys(CITIES)[0], skylineFile = CITIES[city].skyline()) {
   cityName = city;
+  screens.setZone(CITIES[city].zone);
   const deskFile = fetchModel('desk');
   const detailsFile = fetchModel('details');
   (async () => {
