@@ -8,8 +8,8 @@
 // moves the list with the fingers and it settles on the nearest city when they stop; a mouse
 // wheel notch moves exactly one. The city applies once the list settles, so a fast scroll
 // costs one cross-fade. A column of dots down the right edge, one per city, marks where the list
-// is; clicking one slides to it. Until someone first scrolls (remembered in this browser), an
-// opacity wave runs down the dots to invite scrolling.
+// is; clicking one slides to it. On every page load, an opacity wave runs down the dots to
+// invite scrolling, until the first scroll or dot click.
 // The laptop lists the times of day: the current pick sits in a filled pill and the item under
 // the cursor gets an outline.
 // The phone shows the time in the city outside the window, 24-hour, like a lock screen: dim
@@ -50,7 +50,6 @@ const DOT_OVER = 0.8; // a dot under the cursor
 const PULSE_SECONDS = 2.5; // one wave down the dots, then a rest, per cycle
 const PULSE_TRAVEL = 0.6; // the share of the cycle the wave spends travelling
 const PULSE_SPREAD = 0.12; // the wave's width, as a share of the column
-const SCROLLED_KEY = 'desk-scene:monitor-scrolled';
 
 const ease = (x) => x * x * (3 - 2 * x);
 const wrap = (i, n) => ((i % n) + n) % n;
@@ -116,13 +115,8 @@ export function createScreens() {
   const point = new THREE.Vector2();
   let time = clockFormat('America/Los_Angeles');
   let shownMinute = -1;
-  let scrolled = false; // someone has scrolled the monitor in this browser: no more pulse
-  try { scrolled = localStorage.getItem(SCROLLED_KEY) === '1'; } catch { /* storage blocked */ }
-  const markScrolled = () => {
-    if (scrolled) return;
-    scrolled = true;
-    try { localStorage.setItem(SCROLLED_KEY, '1'); } catch { /* storage blocked */ }
-  };
+  let scrolled = false; // the monitor has been scrolled since this page loaded: no more pulse
+  const markScrolled = () => { scrolled = true; };
 
   // The carousel's items around pos (in items; whole numbers sit centred), each line as large
   // as fits. Neighbours slide in from above and below while it moves.
@@ -146,8 +140,8 @@ export function createScreens() {
   };
 
   // The dot column. Each dot's cell (the column's full width, halfway to its neighbours) is what
-  // a click hits, through cells as the menus use them. The current dot follows the list as it
-  // slides, stretched into a short pill.
+  // a click hits, through cells as the menus use them. The current dot is solid and follows the
+  // list as it slides.
   const paintDots = (entry, g) => {
     const { canvas, items, pos } = entry;
     const n = items.length;
@@ -171,8 +165,8 @@ export function createScreens() {
         alpha += (1 - alpha) * Math.exp(-d * d);
       }
       g.globalAlpha = alpha;
-      const tall = i === here ? r * 2.6 : r;
-      roundRect(g, x - r, y - tall, r * 2, tall * 2, r);
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
       g.fill();
     });
     g.globalAlpha = 1;
@@ -388,7 +382,7 @@ export function createScreens() {
       for (const entry of entries) {
         if (!entry.carousel) continue;
         settle(entry, dt, instant);
-        // The invitation runs until the first scroll; reduced motion leaves the dots still.
+        // The invitation runs until the first scroll this visit; reduced motion leaves the dots still.
         const pulsing = !scrolled && !instant;
         if (pulsing || entry.pulsing) {
           entry.pulsing = pulsing;
